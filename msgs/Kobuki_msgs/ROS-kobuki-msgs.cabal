@@ -1,0 +1,38 @@
+Name:                ROS-kobuki-msgs
+Version:             0.1
+Synopsis:            ROS Messages from kobuki
+Cabal-version:       >=1.6
+Category:            Robotics
+Build-type:          Simple
+
+Library
+  Exposed-Modules: Ros.Kobuki_msgs.BumperEvent
+                   Ros.Kobuki_msgs.ButtonEvent
+                   Ros.Kobuki_msgs.CliffEvent
+--                   Ros.Kobuki_msgs.ControllerInfo
+--                   Ros.Kobuki_msgs.DigitalInputEvent
+--                   Ros.Kobuki_msgs.DigitalOutput
+--                   Ros.Kobuki_msgs.DockInfraRed
+--                   Ros.Kobuki_msgs.ExternalPower
+--                   Ros.Kobuki_msgs.KeyboardInput
+                   Ros.Kobuki_msgs.Led
+--                   Ros.Kobuki_msgs.MotorPower
+--                   Ros.Kobuki_msgs.PowerSystemEvent
+--                   Ros.Kobuki_msgs.RobotStateEvent
+--                   Ros.Kobuki_msgs.ScanAngle
+--                   Ros.Kobuki_msgs.SensorState
+                   Ros.Kobuki_msgs.Sound
+--                   Ros.Kobuki_msgs.VersionInfo
+                   Ros.Kobuki_msgs.WheelDropEvent
+
+  Build-Depends:   base >= 4.2 && < 6,
+                   vector > 0.7,
+                   time >= 1.1,
+                   data-default-generics >= 0.3,
+                   lens-family-core >= 1.2,
+                   lens-family-th >= 0.4.1,
+                   roshask == 0.4.*,
+                   ROS-std-msgs,
+                   ROS-geometry-msgs,
+                   ROS-std-srvs-msgs
+  GHC-Options:     -O2

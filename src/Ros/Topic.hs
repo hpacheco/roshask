@@ -12,6 +12,8 @@ import Control.Applicative
 import Control.Arrow ((***), second)
 import Control.Monad ((<=<), (>=>))
 import Control.Monad.IO.Class
+import Data.Either
+import Prelude as P
 
 -- |A Topic is an infinite stream of values that steps between values
 -- in a 'Monad'.
@@ -26,7 +28,7 @@ instance Applicative m => Applicative (Topic m) where
 
 -- |Return the first value produced by a 'Topic'.
 head :: Functor m => Topic m a -> m a
-head = fmap fst . runTopic
+head = fmap P.fst . runTopic
 
 -- |Return the first value produced by a 'Topic' along with the
 -- remaining 'Topic' data.
@@ -44,7 +46,7 @@ cons x t = Topic $ return (x, t)
 -- |Returns a 'Topic' containing all the values from the given 'Topic'
 -- after the first.
 tail :: Monad m => Topic m a -> Topic m a
-tail = Topic . (runTopic . snd <=< runTopic)
+tail = Topic . (runTopic . P.snd <=< runTopic)
 
 -- |Return a 'Topic' of all the suffixes of a 'Topic'.
 tails :: Monad m => Topic m a -> Topic m (Topic m a)
@@ -73,13 +75,13 @@ take = aux []
 -- the values it produces.
 take_ :: Monad m => Int -> Topic m a -> m ()
 take_ 0 = const $ return ()
-take_ n = take_ (n-1) . snd <=< runTopic
+take_ n = take_ (n-1) . P.snd <=< runTopic
 
 -- |@drop n t@ returns the suffix of @t@ after the first @n@ elements.
 drop :: Monad m => Int -> Topic m a -> Topic m a
 drop = (Topic .) . aux
   where aux 0 = runTopic
-        aux n = aux (n-1) . snd <=< runTopic
+        aux n = aux (n-1) . P.snd <=< runTopic
 
 -- |@dropWhile p t@ returns the suffix of @t@ after all elements
 -- satisfying predicate @p@ have been dropped.
@@ -246,7 +248,19 @@ join t = Topic $ do (x, t') <- runTopic t
 -- useful for 'Topic's whose steps produce side-effects, but not
 -- useful pure values.
 forever :: Monad m => Topic m a -> m b
-forever = forever . snd <=< runTopic
+forever = forever . P.snd <=< runTopic
+
+fst :: (Functor m, Monad m) => Topic m (a,b) -> Topic m a
+fst = fmap P.fst
+
+snd :: (Functor m, Monad m) => Topic m (a,b) -> Topic m b
+snd = fmap P.snd
+
+left :: (Functor m, Monad m) => Topic m (Either a b) -> Topic m a
+left = fmap (\(Left x) -> x) . Ros.Topic.filter isLeft
+
+right :: (Functor m, Monad m) => Topic m (Either a b) -> Topic m b
+right = fmap (\(Right x) -> x) . Ros.Topic.filter isRight
 
 -- |Map a monadic action over a 'Topic'.
 mapM :: (Functor m, Monad m) => (a -> m b) -> Topic m a -> Topic m b

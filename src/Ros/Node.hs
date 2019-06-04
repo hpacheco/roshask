@@ -75,8 +75,8 @@ addSource tname updateStats c uri =
 
 -- Create a new Subscription value that will act as a named input
 -- channel with zero or more connected publishers.
-mkSub :: forall a. (RosBinary a, MsgInfo a) =>
-         String -> Config (Topic IO a, Subscription)
+mkSub :: forall a. (RosBinary a, MsgInfo a,Typeable a) =>
+         String -> Config (Topic IO a,Subscription)
 mkSub tname = do c <- liftIO $ newBoundedChan recvBufferSize
                  let stream = Topic $ do x <- readChan c
                                          return (x, stream)
@@ -86,8 +86,8 @@ mkSub tname = do c <- liftIO $ newBoundedChan recvBufferSize
                  let topicType = msgTypeName (undefined::a)
                      updateStats = recvMessageStat stats
                      addSource' = flip runReaderT r . addSource tname updateStats c
-                     sub = Subscription known addSource' topicType stats
-                 return (stream, sub)
+                     sub = Subscription known addSource' topicType (DynTopic stream) stats
+                 return (stream,sub)
 
 mkPub :: forall a. (RosBinary a, MsgInfo a, Typeable a) =>
          Topic IO a -> Int -> Config Publication
@@ -113,15 +113,18 @@ subscribe_ name =
        name' <- canonicalizeName =<< remapName name
        r <- nodeAppConfig <$> ask
        let subs = subscriptions n
-       when (M.member name' subs)
-            (error $ "Already subscribed to "++name')
-       let pubs = publications n
-       if M.member name' pubs
-         then return . fromDynErr . pubTopic $ pubs M.! name'
-         else do (stream, sub) <- liftIO $ runReaderT (mkSub name') r
-                 put n { subscriptions = M.insert name' sub subs }
-                 --return stream
-                 liftIO $ share stream
+       case (M.lookup name' subs) of
+           Just sub -> case fromDynTopic (subTopic sub) of
+               Nothing -> error $ "Already subscribed to topic " ++ name' ++ " with a different type."
+               Just stream -> liftIO $ share stream
+           Nothing -> do
+             let pubs = publications n
+             if M.member name' pubs
+               then return . fromDynErr . pubTopic $ pubs M.! name'
+               else do (stream,sub) <- liftIO $ runReaderT (mkSub name') r
+                       put n { subscriptions = M.insert name' sub subs }
+                       --return stream
+                       liftIO $ share stream
   where fromDynErr = maybe (error msg) id . fromDynTopic
         msg = "Subscription to "++name++" at a different type than "++
               "what that Topic was already advertised at by this Node."

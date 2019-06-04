@@ -22,6 +22,7 @@ import Ros.Topic.Stats
 data Subscription = Subscription { knownPubs :: TVar (Set URI)
                                  , addPub    :: URI -> IO ThreadId
                                  , subType   :: String
+                                 , subTopic  :: DynTopic
                                  , subStats  :: StatMap SubStats }
 
 data DynTopic where

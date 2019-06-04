@@ -2,6 +2,7 @@
 -- |Utility functions for working with 'Topic's. These functions are
 -- primarily combinators for fusing two 'Topic's in various ways.
 module Ros.Topic.Util where
+import qualified Prelude as P
 import Prelude hiding (dropWhile, filter, splitAt, mapM)
 import Control.Applicative
 import Control.Arrow ((***), second)
@@ -16,6 +17,9 @@ import qualified Data.Sequence as S
 import qualified Data.Foldable as F
 import Ros.Rate (rateLimiter)
 import Ros.Topic hiding (mapM_)
+
+repeat :: (Functor m, Monad m) => a -> Topic m a
+repeat a = fromList (P.repeat a)
 
 -- |Produce an infinite list from a 'Topic'.
 toList :: Topic IO a -> IO [a]
@@ -96,7 +100,7 @@ fan n t0 = do cs <- replicateM n newTChanIO
                                               writeTVar signal True
                                  produce t'
               _ <- forkIO $ produce t0
-              return $ map (repeatM . feed) cs
+              return $ P.map (repeatM . feed) cs
 
 -- |Make a 'Topic' shareable among multiple consumers. Each consumer
 -- of a Topic gets its own read buffer automatically as soon as it
