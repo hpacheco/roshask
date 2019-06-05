@@ -6,6 +6,7 @@ import Control.Concurrent (killThread, forkIO, threadDelay, MVar, putMVar,
                            isEmptyMVar, readMVar, modifyMVar_)
 import Control.Concurrent.SSem (SSem)
 import qualified Control.Concurrent.SSem as Sem
+import qualified Control.Monad.Except as E
 import Control.Monad.IO.Class (liftIO)
 import qualified Data.ByteString.UTF8 ()
 import qualified Data.ByteString.Lazy.UTF8 as BLU
@@ -26,6 +27,7 @@ import System.Posix.Process (getProcessID)
 #endif
 import System.Process (readProcess)
 import Ros.Internal.RosTypes
+import Ros.Internal.Util.AppConfig (debug)
 import Ros.Topic.Stats (PubStats(PubStats), SubStats(SubStats))
 import Ros.Graph.Master
 

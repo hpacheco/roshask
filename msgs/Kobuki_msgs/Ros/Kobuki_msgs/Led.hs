@@ -21,6 +21,7 @@ data Led = Led
     { _value :: Word.Word8
     } deriving (P.Show, P.Eq, P.Ord, T.Typeable, G.Generic)
 
+value_BLACK,value_GREEN,value_ORANGE,value_RED :: Word.Word8
 value_BLACK = 0
 value_GREEN = 1
 value_ORANGE = 2

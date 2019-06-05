@@ -22,9 +22,11 @@ data WheelDropEvent = WheelDropEvent
     , _state :: Word.Word8
     } deriving (P.Show, P.Eq, P.Ord, T.Typeable, G.Generic)
 
+wheel_LEFT,wheel_RIGHT :: Word.Word8
 wheel_LEFT = 0
 wheel_RIGHT = 1
 
+state_RAISED,state_DROPPED :: Word.Word8
 state_RAISED = 0
 state_DROPPED = 1
 

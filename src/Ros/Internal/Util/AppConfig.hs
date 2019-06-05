@@ -2,6 +2,7 @@
 module Ros.Internal.Util.AppConfig where
 import Control.Monad.Reader
 import Control.Concurrent
+import Control.Monad.Except as E
 
 data ConfigOptions = ConfigOptions { verbosity :: Int }
 
@@ -12,7 +13,12 @@ getVerbosity = verbosity `fmap` ask
 
 debug :: String -> Config ()
 debug s = do v <- getVerbosity
-             when (v > 0) (liftIO (putStrLn s))
+             when (True) (liftIO (putStrLn s)) -- (v > 0)
+
+orErrorConfig_ :: String -> Config () -> Config ()
+orErrorConfig_ msg m = E.catchError m $ \e -> do
+    debug $ msg ++ ": " ++ show e
+    return ()
 
 forkConfig :: Config () -> Config ThreadId
 forkConfig c = do r <- ask

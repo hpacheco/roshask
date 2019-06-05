@@ -8,12 +8,13 @@ import Ros.Internal.RosTypes
 import Ros.Internal.Util.AppConfig (Config, debug)
 import Ros.Graph.Master
 import Ros.Graph.Slave
+import Ros.Internal.Util.AppConfig
 
 -- Inform the master that we are publishing a particular topic.
 registerPublication :: RosSlave n => 
                        String -> n -> String -> String -> 
                        (TopicName, TopicType, a) -> Config ()
-registerPublication name _n master uri (tname, ttype, _) = 
+registerPublication name _n master uri (tname, ttype, _) = orErrorConfig_ "Warning: cannot register publication on master" $ 
     do debug $ "Registering publication of "++ttype++" on topic "++
                tname++" on master "++master
        _subscribers <- liftIO $ registerPublisher master name tname ttype uri
@@ -23,8 +24,8 @@ registerPublication name _n master uri (tname, ttype, _) =
 registerSubscription :: RosSlave n =>
                         String -> n -> String -> String -> 
                         (TopicName, TopicType, a) -> Config ()
-registerSubscription name n master uri (tname, ttype, _) = 
-    do debug $ "Registring subscription to "++tname++" for "++ttype
+registerSubscription name n master uri (tname, ttype, _) = orErrorConfig_ "Warning: cannot register publication on master" $ 
+    do debug $ "Registering subscription to "++tname++" for "++ttype
        (r,_,publishers) <- liftIO $ registerSubscriber master name tname ttype uri
        if r == 1 
          then liftIO $ publisherUpdate n tname publishers

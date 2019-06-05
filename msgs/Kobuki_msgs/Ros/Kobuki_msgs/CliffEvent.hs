@@ -23,10 +23,12 @@ data CliffEvent = CliffEvent
     , _bottom :: Word.Word16
     } deriving (P.Show, P.Eq, P.Ord, T.Typeable, G.Generic)
 
+sensor_LEFT,sensor_CENTER,sensor_RIGHT :: Word.Word8
 sensor_LEFT = 0
 sensor_CENTER = 1
 sensor_RIGHT = 2
 
+state_FLOOR,state_CLIFF :: Word.Word8
 state_FLOOR = 0
 state_CLIFF = 1
 

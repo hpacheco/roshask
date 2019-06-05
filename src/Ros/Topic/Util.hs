@@ -8,7 +8,7 @@ import Control.Applicative
 import Control.Arrow ((***), second)
 import Control.Concurrent hiding (yield)
 import Control.Concurrent.STM
-import Control.Monad ((<=<), when, replicateM)
+import Control.Monad ((<=<), when, replicateM,foldM)
 import Control.Monad.IO.Class
 import Data.AdditiveGroup (AdditiveGroup, (^+^), (^-^), Sum(..))
 import Data.Monoid (Monoid)
@@ -218,6 +218,9 @@ leftThenRight t1 = Topic $ warmup =<< runTopic t1
 -- available.
 merge :: Topic IO a -> Topic IO a -> Topic IO a
 merge t1 t2 = either id id <$> t1 <+> t2
+
+mergeList :: [Topic IO a] -> Topic IO a
+mergeList (x:xs) = foldr merge x xs
 
 -- |Apply a function to each consecutive pair of elements from a 'Topic'.
 finiteDifference :: (Functor m, Monad m) => (a -> a -> b) -> Topic m a -> Topic m b

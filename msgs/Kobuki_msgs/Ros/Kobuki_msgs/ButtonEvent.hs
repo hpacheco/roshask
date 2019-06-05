@@ -22,10 +22,12 @@ data ButtonEvent = ButtonEvent
     , _state :: Word.Word8
     } deriving (P.Show, P.Eq, P.Ord, T.Typeable, G.Generic)
 
+button_Button0,button_Button1,button_Button2 :: Word.Word8
 button_Button0 = 0
 button_Button1 = 1
-button_button2 = 2
+button_Button2 = 2
 
+state_RELEASED,state_PRESSED :: Word.Word8
 state_RELEASED = 0
 state_PRESSED = 1
 

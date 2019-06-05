@@ -22,10 +22,12 @@ data BumperEvent = BumperEvent
     , _state :: Word.Word8
     } deriving (P.Show, P.Eq, P.Ord, T.Typeable, G.Generic)
 
+bumper_LEFT,bumper_CENTER,bumper_RIGHT :: Word.Word8
 bumper_LEFT = 0
 bumper_CENTER = 1
 bumper_RIGHT = 2
 
+state_RELEASED,state_PRESSED :: Word.Word8
 state_RELEASED = 0
 state_PRESSED = 1
 

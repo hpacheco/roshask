@@ -36,6 +36,9 @@ import Ros.Topic
 import Ros.Topic.Stats (recvMessageStat, sendMessageStat)
 import Ros.Topic.Util (share)
 
+import qualified Control.Monad.Except as E
+import qualified Control.Exception as E
+
 -- |ROS topic subscriber
 class Subscribe s where
     -- |Subscrive to given topic name

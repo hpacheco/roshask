@@ -6,6 +6,7 @@ import Control.Concurrent (forkIO, killThread, newEmptyMVar, takeMVar, putMVar)
 import Control.Concurrent.STM (atomically)
 import Control.Concurrent.STM.TVar
 import qualified Control.Exception as E
+import Control.Monad.Except
 import Control.Monad.Reader
 import Data.Binary.Put (runPut, putWord32le)
 import Data.Binary.Get (runGet, getWord32le)
@@ -35,7 +36,6 @@ import Ros.Graph.Slave (requestTopicClient)
 import Ros.Graph.Master (lookupService)
 import Data.Maybe (fromMaybe)
 import Ros.Service.ServiceTypes
-import Control.Monad.Except
 import System.IO.Error (tryIOError)
 
 -- |Push each item from this client's buffer over the connected
@@ -60,7 +60,7 @@ recvAll s = flip go []
                             else return $ B.concat (reverse (bs:acc))
 
 negotiatePub :: String -> String -> Socket -> IO ()
-negotiatePub ttype md5 sock = 
+negotiatePub ttype md5 sock =
     do headerLength <- runGet (fromIntegral <$> getWord32le) <$>
                        BL.fromChunks . (:[]) <$> recvAll sock 4
        headerBytes <- recvAll sock headerLength

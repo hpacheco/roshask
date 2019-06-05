@@ -21,6 +21,7 @@ data Sound = Sound
     { _value :: Word.Word8
     } deriving (P.Show, P.Eq, P.Ord, T.Typeable, G.Generic)
 
+value_ON,value_OFF,value_RECHARGE,value_BUTTON,value_ERROR,value_CLEANINGSTART,value_CLEANINGEND :: Word.Word8
 value_ON = 0
 value_OFF = 1
 value_RECHARGE = 2
