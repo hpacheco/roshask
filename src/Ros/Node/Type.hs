@@ -2,8 +2,9 @@
              ExistentialQuantification, GeneralizedNewtypeDeriving #-}
 module Ros.Node.Type where
 import Control.Applicative (Applicative(..), (<$>))
-import Control.Concurrent (MVar, putMVar)
+import Control.Concurrent (MVar, putMVar,readMVar)
 import Control.Concurrent.STM (atomically, TVar, readTVar, writeTVar)
+import Control.Concurrent.BoundedChan
 import Control.Monad.State
 import Control.Monad.Reader
 import Data.Dynamic
@@ -11,7 +12,9 @@ import Data.Map (Map)
 import qualified Data.Map as M
 import Data.Set (Set)
 import qualified Data.Set as S
+import qualified Data.List as List
 import Control.Concurrent (ThreadId)
+import Control.Concurrent.Chan
 import Ros.Internal.RosTypes (URI)
 import Ros.Internal.Util.ArgRemapping (ParamVal)
 import Ros.Internal.Util.AppConfig (ConfigOptions)
@@ -22,6 +25,7 @@ import Ros.Topic.Stats
 data Subscription = Subscription { knownPubs :: TVar (Set URI)
                                  , addPub    :: URI -> IO ThreadId
                                  , subType   :: String
+                                 , subChan   :: DynBoundedChan
                                  , subTopic  :: DynTopic
                                  , subStats  :: StatMap SubStats }
 
@@ -31,10 +35,17 @@ data DynTopic where
 fromDynTopic :: Typeable a => DynTopic -> Maybe (Topic IO a)
 fromDynTopic (DynTopic t) = gcast t
 
+data DynBoundedChan where
+  DynBoundedChan :: Typeable a => BoundedChan a -> DynBoundedChan
+
+fromDynBoundedChan :: Typeable a => DynBoundedChan -> Maybe (BoundedChan a)
+fromDynBoundedChan (DynBoundedChan t) = gcast t
+
 data Publication = Publication { subscribers :: TVar (Set URI)
                                , pubType     :: String
                                , pubPort     :: Int
                                , pubCleanup  :: IO ()
+                               , pubChan     :: DynBoundedChan
                                , pubTopic    :: DynTopic
                                , pubStats    :: StatMap PubStats }
 
@@ -84,15 +95,16 @@ instance RosSlave NodeState where
                                                       M.toList $
                                                       stats
                                             return (name, topicType, stats')
+    --hpacheco: ignore publishers from the same node
     publisherUpdate ns name uris = 
-        let act = join.atomically $
+        let act = readMVar (nodeURI ns) >>= \nodeuri -> join.atomically $
                   case M.lookup name (subscriptions ns) of
                     Nothing -> return (return ())
                     Just sub -> do let add = addPub sub >=> \_ -> return ()
                                    known <- readTVar (knownPubs sub) 
                                    (act',known') <- foldM (connectToPub add)
                                                           (return (), known)
-                                                          uris
+                                                          (List.delete nodeuri uris)
                                    writeTVar (knownPubs sub) known'
                                    return act'
         in act

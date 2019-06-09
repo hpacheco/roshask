@@ -9,7 +9,7 @@ module Ros.Node (Node, runNode, Subscribe, Advertise,
                  module Ros.Internal.RosTypes, Topic(..),
                  module Ros.Internal.RosTime, liftIO) where
 import Control.Applicative ((<$>))
-import Control.Concurrent (newEmptyMVar, readMVar, putMVar)
+import Control.Concurrent (newEmptyMVar, readMVar, putMVar,killThread)
 import Control.Concurrent.BoundedChan
 import Control.Concurrent.STM (newTVarIO)
 import Control.Monad (when)
@@ -86,27 +86,42 @@ mkSub tname = do c <- liftIO $ newBoundedChan recvBufferSize
                  known <- liftIO $ newTVarIO S.empty
                  stats <- liftIO $ newTVarIO M.empty
                  r <- ask
+                 stream' <- liftIO $ share stream
                  let topicType = msgTypeName (undefined::a)
                      updateStats = recvMessageStat stats
                      addSource' = flip runReaderT r . addSource tname updateStats c
-                     sub = Subscription known addSource' topicType (DynTopic stream) stats
-                 return (stream,sub)
+                     sub = Subscription known addSource' topicType (DynBoundedChan c) (DynTopic stream') stats
+                 return (stream',sub)
 
+-- hpacheco: support multiple publishers within the same node
 mkPub :: forall a. (RosBinary a, MsgInfo a, Typeable a) =>
-         Topic IO a -> Int -> Config Publication
-mkPub t n = do t' <- liftIO $ share t
-               mkPubAux (msgTypeName (undefined::a)) t' (runServer t') n
+         Topic IO a -> Maybe Publication -> Int -> Config Publication
+mkPub (t0::Topic IO a) mbpub n = do
+    pub <- case mbpub of
+        Nothing -> do
+            (tchan::BoundedChan a) <- liftIO $ newBoundedChan n
+            let (t'::Topic IO a) = Topic $ do { x <- readChan tchan; return (x,t') }
+            t'' <- liftIO $ share t'
+            mkPubAux (msgTypeName (undefined::a)) t'' tchan (runServer t'') n
+        Just pub -> return pub
+    tchan <- case fromDynBoundedChan (pubChan pub) of
+        Nothing -> error $ "Already published to topic with a different type."
+        Just tchan -> return tchan
+    let feed t = do { (x,t') <- runTopic t; writeChan tchan x; feed t' }
+    t0' <- liftIO $ share t0
+    pubthread <- forkConfig $ liftIO $ feed t0'
+    return $ pub { pubCleanup = pubCleanup pub >> killThread pubthread }
 
 mkPubAux :: Typeable a =>
-            String -> Topic IO a ->
+            String -> Topic IO a -> BoundedChan a ->
             ((URI -> Int -> IO ()) -> Int -> Config (Config (), Int)) ->
             Int -> Config Publication
-mkPubAux trep t runServer' bufferSize =
+mkPubAux trep t tchan runServer' bufferSize =
     do stats <- liftIO $ newTVarIO M.empty
        (cleanup, port) <- runServer' (sendMessageStat stats) bufferSize
        known <- liftIO $ newTVarIO S.empty
        cleanup' <- configured cleanup
-       return $ Publication known trep port cleanup' (DynTopic t) stats
+       return $ Publication known trep port cleanup' (DynBoundedChan tchan) (DynTopic t) stats
 
 -- |Subscribe to the given Topic. Returns a 'Ros.Topic.Util.share'd 'Topic'.
 subscribe_ :: (RosBinary a, MsgInfo a, Typeable a)
@@ -119,18 +134,17 @@ subscribe_ name =
        case (M.lookup name' subs) of
            Just sub -> case fromDynTopic (subTopic sub) of
                Nothing -> error $ "Already subscribed to topic " ++ name' ++ " with a different type."
-               Just stream -> liftIO $ share stream
+               Just stream -> return stream
            Nothing -> do
              let pubs = publications n
-             if M.member name' pubs
-               then return . fromDynErr . pubTopic $ pubs M.! name'
-               else do (stream,sub) <- liftIO $ runReaderT (mkSub name') r
-                       put n { subscriptions = M.insert name' sub subs }
-                       --return stream
-                       liftIO $ share stream
-  where fromDynErr = maybe (error msg) id . fromDynTopic
-        msg = "Subscription to "++name++" at a different type than "++
-              "what that Topic was already advertised at by this Node."
+             --if M.member name' pubs -- TODO: shouldn't happen, ignoring other possible publishers
+             --  then return . fromDynErr . pubTopic $ pubs M.! name'
+             (stream,sub) <- liftIO $ runReaderT (mkSub name') r
+             put n { subscriptions = M.insert name' sub subs }
+             return $ stream
+--  where fromDynErr = maybe (error msg) id . fromDynTopic
+--        msg = "Subscription to "++name++" at a different type than "++
+--              "what that Topic was already advertised at by this Node."
 
 -- |Spin up a thread within a Node. This is typically used for message
 -- handlers. Note that the supplied 'Topic' is traversed solely for
@@ -138,16 +152,15 @@ subscribe_ name =
 runHandler :: (a -> IO b) -> Topic IO a -> Node ThreadId
 runHandler = ((liftIO . forkIO . forever . join) .) . fmap
 
-advertiseAux :: (Int -> Config Publication) -> Int -> TopicName -> Node ()
+advertiseAux :: (Maybe Publication -> Int -> Config Publication) -> Int -> TopicName -> Node ()
 advertiseAux mkPub' bufferSize name =
     do n <- get
        name' <- remapName =<< canonicalizeName name
        r <- nodeAppConfig <$> ask
        let pubs = publications n
-       if M.member name' pubs
-         then error $ "Already advertised " ++ name'
-         else do pub <- liftIO $ runReaderT (mkPub' bufferSize) r
-                 put n { publications = M.insert name' pub pubs }
+       let mbpub = M.lookup name' pubs 
+       pub' <- liftIO $ runReaderT (mkPub' mbpub bufferSize) r
+       put n { publications = M.insert name' pub' pubs }
 
 -- |Advertise a 'Topic' publishing a stream of 'IO' values with a
 -- per-client transmit buffer of the specified size.

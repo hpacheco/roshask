@@ -5,6 +5,8 @@ import Control.Arrow (first)
 import Control.Concurrent (forkIO, killThread, newEmptyMVar, takeMVar, putMVar)
 import Control.Concurrent.STM (atomically)
 import Control.Concurrent.STM.TVar
+import Control.Concurrent.BoundedChan (BoundedChan(..))
+import qualified Control.Concurrent.BoundedChan as BoundedChan
 import qualified Control.Exception as E
 import Control.Monad.Except
 import Control.Monad.Reader
