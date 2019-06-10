@@ -72,7 +72,7 @@ Library
                        --Ros.Internal.DepFinder
                        Ros.Internal.Msg.MsgInfo
                        --Ros.Internal.Msg.SrvInfo
-                       --Ros.Internal.Msg.HeaderSupport
+                       Ros.Internal.Msg.HeaderSupport
                        Ros.Internal.Util.BytesToVector
                        Ros.Internal.Util.StorableMonad
                        Ros.Internal.RosTime
