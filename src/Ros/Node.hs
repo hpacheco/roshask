@@ -3,11 +3,11 @@
 -- roshask. This module defines the actions used to configure a ROS
 -- Node.
 module Ros.Node (Node, runNode, Subscribe, Advertise,
-                 getShutdownAction, runHandler, getParam,
-                 getParamOpt, getName, getNamespace,
+                 getShutdownAction, runHandler, getName, getNamespace,
                  subscribe, advertise, advertiseBuffered,
                  module Ros.Internal.RosTypes, Topic(..),
                  module Ros.Internal.RosTime, liftIO) where
+                     --getParam, getParamOpt,
 import Control.Applicative ((<$>))
 import Control.Concurrent (newEmptyMVar, readMVar, putMVar,killThread)
 import Control.Concurrent.BoundedChan
@@ -20,7 +20,7 @@ import qualified Data.Set as S
 import Control.Concurrent (forkIO, ThreadId)
 import Data.Dynamic
 import System.Environment (getEnvironment, getArgs)
-import Network.XmlRpc.Internals (XmlRpcType)
+--import Network.XmlRpc.Internals (XmlRpcType)
 
 import Ros.Internal.Msg.MsgInfo
 import Ros.Internal.RosBinary (RosBinary)
@@ -29,7 +29,7 @@ import Ros.Internal.RosTime
 import Ros.Internal.Util.AppConfig (Config, parseAppConfig, forkConfig, configured)
 import Ros.Internal.Util.ArgRemapping
 import Ros.Node.Type
-import qualified Ros.Graph.ParameterServer as P
+--import qualified Ros.Graph.ParameterServer as P
 --import Ros.Node.RosTcp (subStream, runServer)
 import qualified Ros.Node.RunNode as RN
 import Ros.Topic
@@ -194,33 +194,33 @@ canonicalizeName ('~':n) = do state <- get
                               return $ node ++ "/" ++ n
 canonicalizeName n = do (++n) . namespace <$> get
 
--- |Get a parameter value from the Parameter Server.
-getServerParam :: XmlRpcType a => String -> Node (Maybe a)
-getServerParam var = do state <- get
-                        let masterUri = master state
-                            myName = nodeName state
-                        -- Call hasParam first because getParam only returns
-                        -- a partial result (just the return code) in failure.
-                        hasParam <- liftIO $ P.hasParam masterUri myName var
-                        case hasParam of
-                          Right True -> liftIO $ P.getParam masterUri myName var
-                          _ -> return Nothing
+---- |Get a parameter value from the Parameter Server.
+--getServerParam :: XmlRpcType a => String -> Node (Maybe a)
+--getServerParam var = do state <- get
+--                        let masterUri = master state
+--                            myName = nodeName state
+--                        -- Call hasParam first because getParam only returns
+--                        -- a partial result (just the return code) in failure.
+--                        hasParam <- liftIO $ P.hasParam masterUri myName var
+--                        case hasParam of
+--                          Right True -> liftIO $ P.getParam masterUri myName var
+--                          _ -> return Nothing
+--
+---- |Get the value associated with the given parameter name. If the
+---- parameter is not set, then 'Nothing' is returned; if the parameter
+---- is set to @x@, then @Just x@ is returned.
+--getParamOpt :: (XmlRpcType a, FromParam a) => String -> Node (Maybe a)
+--getParamOpt var = do var' <- remapName =<< canonicalizeName var
+--                     params <- nodeParams <$> ask
+--                     case lookup var' params of
+--                       Just val -> return . Just $ fromParam val
+--                       Nothing -> getServerParam var'
 
--- |Get the value associated with the given parameter name. If the
--- parameter is not set, then 'Nothing' is returned; if the parameter
--- is set to @x@, then @Just x@ is returned.
-getParamOpt :: (XmlRpcType a, FromParam a) => String -> Node (Maybe a)
-getParamOpt var = do var' <- remapName =<< canonicalizeName var
-                     params <- nodeParams <$> ask
-                     case lookup var' params of
-                       Just val -> return . Just $ fromParam val
-                       Nothing -> getServerParam var'
-
--- |Get the value associated with the given parameter name. If the
--- parameter is not set, return the second argument as the default
--- value.
-getParam :: (XmlRpcType a, FromParam a) => String -> a -> Node a
-getParam var def = maybe def id <$> getParamOpt var
+---- |Get the value associated with the given parameter name. If the
+---- parameter is not set, return the second argument as the default
+---- value.
+--getParam :: (XmlRpcType a, FromParam a) => String -> a -> Node a
+--getParam var def = maybe def id <$> getParamOpt var
 
 -- |Get the current node's name.
 getName :: Node String

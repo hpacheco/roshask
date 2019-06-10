@@ -69,17 +69,17 @@ Library
                        Ros.Topic.Stamped
                        Ros.Topic.Arrow
                        Ros.Rate
-                       Ros.Internal.DepFinder
-                       Ros.Internal.Msg.MsgInfo
-                       Ros.Internal.Msg.SrvInfo
-                       Ros.Internal.Msg.HeaderSupport
-                       Ros.Internal.Util.BytesToVector
-                       Ros.Internal.Util.StorableMonad
-                       Ros.Internal.RosTime
-                       Ros.Internal.RosTypes
-                       Ros.Internal.RosBinary
-                       Ros.Internal.SetupUtil
-                       Ros.Internal.PathUtil
+                       --Ros.Internal.DepFinder
+                       --Ros.Internal.Msg.MsgInfo
+                       --Ros.Internal.Msg.SrvInfo
+                       --Ros.Internal.Msg.HeaderSupport
+                       --Ros.Internal.Util.BytesToVector
+                       --Ros.Internal.Util.StorableMonad
+                       --Ros.Internal.RosTime
+                       --Ros.Internal.RosTypes
+                       --Ros.Internal.RosBinary
+                       --Ros.Internal.SetupUtil
+                       --Ros.Internal.PathUtil
                        Ros.Util.PID
 --                       Ros.Service
 --                       Ros.Service.ServiceTypes
@@ -108,14 +108,14 @@ Library
                        SafeSemaphore,
                        storable-tuple >= 0.0.2,
                        transformers >= 0.4,
-                       haxr >= 3000.11.1,
+                       --haxr >= 3000.11.1,
                        utf8-string >= 0.3.6,
-                       uri >= 0.1.5,
+                       --uri >= 0.1.5,
                        vector-space,
-                       filemanip > 0.3.6,
+                       --filemanip > 0.3.6,
                        vector >= 0.10,
                        filepath > 1.1,
-                       xml >= 1.3.5,
+                       --xml >= 1.3.5,
                        directory > 1.0
 
   if !os(windows)
@@ -126,7 +126,7 @@ Library
   Hs-Source-Dirs:      src
   default-language: Haskell2010
   -- Modules not exported by this package.
-  Other-modules:      Ros.Graph.ParameterServer
+  Other-modules:      
                       Ros.Node.Type Ros.Node.RunNode Ros.Node.BinaryIter
                       Ros.Node.ConnectionHeader Ros.Topic.Stats
                       Ros.Internal.Util.RingChan
