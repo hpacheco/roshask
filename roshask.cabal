@@ -70,14 +70,14 @@ Library
                        Ros.Topic.Arrow
                        Ros.Rate
                        --Ros.Internal.DepFinder
-                       --Ros.Internal.Msg.MsgInfo
+                       Ros.Internal.Msg.MsgInfo
                        --Ros.Internal.Msg.SrvInfo
                        --Ros.Internal.Msg.HeaderSupport
-                       --Ros.Internal.Util.BytesToVector
-                       --Ros.Internal.Util.StorableMonad
-                       --Ros.Internal.RosTime
-                       --Ros.Internal.RosTypes
-                       --Ros.Internal.RosBinary
+                       Ros.Internal.Util.BytesToVector
+                       Ros.Internal.Util.StorableMonad
+                       Ros.Internal.RosTime
+                       Ros.Internal.RosTypes
+                       Ros.Internal.RosBinary
                        --Ros.Internal.SetupUtil
                        --Ros.Internal.PathUtil
                        Ros.Util.PID
