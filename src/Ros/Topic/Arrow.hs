@@ -26,6 +26,7 @@ import Control.Monad.IO.Class
 import Control.Applicative
 import Control.Category
 import Control.Arrow
+import Control.Monad.Fail
 
 import Prelude hiding (id, (.))
 
@@ -194,7 +195,7 @@ weightedMeanNormalized :: Monad m =>
 weightedMeanNormalized alpha invAlpha plus scale normalize =
   TopicArrow $ U.weightedMeanNormalized alpha invAlpha plus scale normalize
 
-simpsonsRule :: (Monad m, Fractional n) =>
+simpsonsRule :: (MonadFail m, Fractional n) =>
                 (a -> a -> a) -> (n -> a -> a) -> TopicArrow m a a
 {-# INLINE simpsonsRule #-}
 simpsonsRule plus scale = TopicArrow $ U.simpsonsRule plus scale

@@ -30,7 +30,7 @@ import Ros.Internal.Util.AppConfig (Config, parseAppConfig, forkConfig, configur
 import Ros.Internal.Util.ArgRemapping
 import Ros.Node.Type
 import qualified Ros.Graph.ParameterServer as P
-import Ros.Node.RosTcp (subStream, runServer)
+--import Ros.Node.RosTcp (subStream, runServer)
 import qualified Ros.Node.RunNode as RN
 import Ros.Topic
 import Ros.Topic.Stats (recvMessageStat, sendMessageStat)
@@ -69,12 +69,12 @@ recvBufferSize = 10
 
 -- |Spark a thread that funnels a Stream from a URI into the given
 -- Chan.
-addSource :: (RosBinary a, MsgInfo a) =>
-             String -> (URI -> Int -> IO ()) -> BoundedChan a -> URI ->
-             Config ThreadId
-addSource tname updateStats c uri =
-    forkConfig $ subStream uri tname (updateStats uri) >>=
-                 liftIO . forever . join . fmap (writeChan c)
+--addSource :: (RosBinary a, MsgInfo a) =>
+--             String -> (URI -> Int -> IO ()) -> BoundedChan a -> URI ->
+--             Config ThreadId
+--addSource tname updateStats c uri =
+--    forkConfig $ subStream uri tname (updateStats uri) >>=
+--                 liftIO . forever . join . fmap (writeChan c)
 
 -- Create a new Subscription value that will act as a named input
 -- channel with zero or more connected publishers.
@@ -88,9 +88,9 @@ mkSub tname = do c <- liftIO $ newBoundedChan recvBufferSize
                  r <- ask
                  stream' <- liftIO $ share stream
                  let topicType = msgTypeName (undefined::a)
-                     updateStats = recvMessageStat stats
-                     addSource' = flip runReaderT r . addSource tname updateStats c
-                     sub = Subscription known addSource' topicType (DynBoundedChan c) (DynTopic stream') stats
+                     --updateStats = recvMessageStat stats
+                     --addSource' = flip runReaderT r . addSource tname updateStats c
+                     sub = Subscription known topicType (DynBoundedChan c) (DynTopic stream') stats
                  return (stream',sub)
 
 -- hpacheco: support multiple publishers within the same node
@@ -102,7 +102,7 @@ mkPub (t0::Topic IO a) mbpub n = do
             (tchan::BoundedChan a) <- liftIO $ newBoundedChan n
             let (t'::Topic IO a) = Topic $ do { x <- readChan tchan; return (x,t') }
             t'' <- liftIO $ share t'
-            mkPubAux (msgTypeName (undefined::a)) t'' tchan (runServer t'') n
+            mkPubAux (msgTypeName (undefined::a)) t'' tchan n
         Just pub -> return pub
     tchan <- case fromDynBoundedChan (pubChan pub) of
         Nothing -> error $ "Already published to topic with a different type."
@@ -114,14 +114,14 @@ mkPub (t0::Topic IO a) mbpub n = do
 
 mkPubAux :: Typeable a =>
             String -> Topic IO a -> BoundedChan a ->
-            ((URI -> Int -> IO ()) -> Int -> Config (Config (), Int)) ->
             Int -> Config Publication
-mkPubAux trep t tchan runServer' bufferSize =
+mkPubAux trep t tchan bufferSize =
     do stats <- liftIO $ newTVarIO M.empty
-       (cleanup, port) <- runServer' (sendMessageStat stats) bufferSize
+       --(cleanup, port) <- runServer' (sendMessageStat stats) bufferSize
+       let cleanup = return ()
        known <- liftIO $ newTVarIO S.empty
        cleanup' <- configured cleanup
-       return $ Publication known trep port cleanup' (DynBoundedChan tchan) (DynTopic t) stats
+       return $ Publication known trep cleanup' (DynBoundedChan tchan) (DynTopic t) stats
 
 -- |Subscribe to the given Topic. Returns a 'Ros.Topic.Util.share'd 'Topic'.
 subscribe_ :: (RosBinary a, MsgInfo a, Typeable a)

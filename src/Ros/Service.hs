@@ -1,7 +1,7 @@
 module Ros.Service (callService) where
 import System.Environment(getEnvironment)
 
-import Ros.Node.RosTcp(callServiceWithMaster)
+--import Ros.Node.RosTcp(callServiceWithMaster)
 import Ros.Internal.RosTypes
 import Ros.Internal.RosBinary
 import Ros.Internal.Msg.SrvInfo

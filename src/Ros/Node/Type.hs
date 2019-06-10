@@ -18,12 +18,13 @@ import Control.Concurrent.Chan
 import Ros.Internal.RosTypes (URI)
 import Ros.Internal.Util.ArgRemapping (ParamVal)
 import Ros.Internal.Util.AppConfig (ConfigOptions)
-import Ros.Graph.Slave (RosSlave(..))
+--import Ros.Graph.Slave (RosSlave(..))
 import Ros.Topic (Topic)
 import Ros.Topic.Stats
+import Data.Typeable (gcast)
 
 data Subscription = Subscription { knownPubs :: TVar (Set URI)
-                                 , addPub    :: URI -> IO ThreadId
+                                 --, addPub    :: URI -> IO ThreadId
                                  , subType   :: String
                                  , subChan   :: DynBoundedChan
                                  , subTopic  :: DynTopic
@@ -43,7 +44,7 @@ fromDynBoundedChan (DynBoundedChan t) = gcast t
 
 data Publication = Publication { subscribers :: TVar (Set URI)
                                , pubType     :: String
-                               , pubPort     :: Int
+                               --, pubPort     :: Int
                                , pubCleanup  :: IO ()
                                , pubChan     :: DynBoundedChan
                                , pubTopic    :: DynTopic
@@ -77,40 +78,43 @@ instance MonadReader NodeConfig Node where
     ask = Node ask
     local f m = Node $ withReaderT f (unNode m)
 
-instance RosSlave NodeState where
-    getMaster = master
-    getNodeName = nodeName
-    getNodeURI = nodeURI
-    getSubscriptions = atomically . mapM formatSub . M.toList . subscriptions
-        where formatSub (name, sub) = let topicType = subType sub
-                                      in do stats <- readTVar (subStats sub)
-                                            stats' <- mapM statSnapshot . 
-                                                      M.toList $
-                                                      stats
-                                            return (name, topicType, stats')
-    getPublications = atomically . mapM formatPub . M.toList . publications
-        where formatPub (name, pub) = let topicType = pubType pub
-                                      in do stats <- readTVar (pubStats pub)
-                                            stats' <- mapM statSnapshot .
-                                                      M.toList $
-                                                      stats
-                                            return (name, topicType, stats')
-    --hpacheco: ignore publishers from the same node
-    publisherUpdate ns name uris = 
-        let act = readMVar (nodeURI ns) >>= \nodeuri -> join.atomically $
-                  case M.lookup name (subscriptions ns) of
-                    Nothing -> return (return ())
-                    Just sub -> do let add = addPub sub >=> \_ -> return ()
-                                   known <- readTVar (knownPubs sub) 
-                                   (act',known') <- foldM (connectToPub add)
-                                                          (return (), known)
-                                                          (List.delete nodeuri uris)
-                                   writeTVar (knownPubs sub) known'
-                                   return act'
-        in act
-    getTopicPortTCP = ((pubPort <$> ) .) . flip M.lookup . publications
-    setShutdownAction ns a = putMVar (signalShutdown ns) a
-    stopNode = mapM_ (pubCleanup . snd) . M.toList . publications
+--instance RosSlave NodeState where
+getMaster = master
+getNodeName = nodeName
+getNodeURI = nodeURI
+--    getSubscriptions = atomically . mapM formatSub . M.toList . subscriptions
+--        where formatSub (name, sub) = let topicType = subType sub
+--                                      in do stats <- readTVar (subStats sub)
+--                                            stats' <- mapM statSnapshot . 
+--                                                      M.toList $
+--                                                      stats
+--                                            return (name, topicType, stats')
+--    getPublications = atomically . mapM formatPub . M.toList . publications
+--        where formatPub (name, pub) = let topicType = pubType pub
+--                                      in do stats <- readTVar (pubStats pub)
+--                                            stats' <- mapM statSnapshot .
+--                                                      M.toList $
+--                                                      stats
+--                                            return (name, topicType, stats')
+--    --hpacheco: ignore publishers from the same node
+--    publisherUpdate ns name uris = 
+--        let act = readMVar (nodeURI ns) >>= \nodeuri -> join.atomically $
+--                  case M.lookup name (subscriptions ns) of
+--                    Nothing -> return (return ())
+--                    Just sub -> do let add = addPub sub >=> \_ -> return ()
+--                                   known <- readTVar (knownPubs sub) 
+--                                   (act',known') <- foldM (connectToPub add)
+--                                                          (return (), known)
+--                                                          (List.delete nodeuri uris)
+--                                   writeTVar (knownPubs sub) known'
+--                                   return act'
+--        in act
+--    getTopicPortTCP = ((pubPort <$> ) .) . flip M.lookup . publications
+--    
+stopNode = mapM_ (pubCleanup . snd) . M.toList . publications
+
+setShutdownAction ns a = putMVar (signalShutdown ns) a
+cleanupNode = stopNode
 
 -- If a given URI is not a part of a Set of known URIs, add an action
 -- to effect a subscription to an accumulated action and add the URI
