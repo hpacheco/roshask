@@ -1,4 +1,4 @@
-Name:                roshask-local
+Name:                roshask
 Version:             0.4
 Synopsis:            Haskell support for the ROS robotics framework.
 License:             BSD3
@@ -132,7 +132,7 @@ Library
                       Ros.Internal.Util.RingChan
                       Ros.Internal.Util.ArgRemapping
                       Ros.Internal.Util.AppConfig
-                      Paths_roshask_local
+                      Paths_roshask
 
 -- The ROS .msg definition parser and Haskell code generation utility.
 --Executable roshask
