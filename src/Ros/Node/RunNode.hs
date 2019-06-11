@@ -16,42 +16,45 @@ import Ros.Node.Type
 import Ros.Topic (Topic,runTopic)
 import qualified Data.Map as Map
 import Data.Typeable (gcast)
+import Data.Maybe
+import Control.Monad
+
+import GHC.Conc
 
 
 -- Redirect local publishers to local subscribers
-registerLocalSubscription :: (String,(Publication,Subscription)) -> Config ()
+registerLocalSubscription :: (String,(Publication,Subscription)) -> Config (Maybe ThreadId)
 registerLocalSubscription (topicname,(pub,sub)) = do
     redirectChan (pubTopic pub) (subChan sub)
   where
-    redirectChan :: DynTopic -> DynBoundedChan -> Config ()
+    redirectChan :: DynTopic -> DynBoundedChan -> Config (Maybe ThreadId)
     redirectChan (DynTopic from) (DynBoundedChan (to::BoundedChan b)) = 
         case gcast from of
-            Nothing -> return ()
+            Nothing -> return Nothing
             Just (from'::Topic IO b) -> do
                 let go t = do { (x,t') <- runTopic t; writeChan to x; go t' }
-                _ <- forkConfig $ liftIO $ go from'
-                return ()
+                liftM Just $ forkConfig $ liftIO $ go from'
 
-registerNode :: String -> NodeState -> Config ()
+registerNode :: String -> NodeState -> Config [ThreadId]
 registerNode name n = 
-    do uri <- liftIO $ readMVar (getNodeURI n)
+    do --uri <- liftIO $ readMVar (getNodeURI n)
        --let master = getMaster n
-       debug $ "Starting node "++name++" at " ++ uri
+       debug $ "Starting node "++name -- ++" at " ++ uri
        let pubsubs = Map.intersectionWithKey (\k p s -> (p,s)) (publications n) (subscriptions n)
-       mapM_ (registerLocalSubscription) (Map.toList pubsubs)
+       liftM catMaybes $ mapM (registerLocalSubscription) (Map.toList pubsubs)
 
 -- |Run a ROS Node with the given name. Returns when the Node has
 -- shutdown either by receiving an interrupt signal (e.g. Ctrl-C) or
 -- because the master told it to stop.
 runNode :: String -> NodeState -> Config ()
 runNode name s = do
-    registerNode name s
+    threads <- registerNode name s
     debug "Spinning"
     allDone <- liftIO $ Sem.new 0
     let ignoreEx :: E.SomeException -> IO ()
         ignoreEx _ = return ()
         shutdown = do putStrLn "Shutting down"
-                      cleanupNode s `E.catch` ignoreEx
+                      mapM_ killThread threads `E.catch` ignoreEx
                       Sem.signal allDone
     liftIO $ setShutdownAction s shutdown
     _ <- liftIO $ 

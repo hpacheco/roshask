@@ -90,7 +90,7 @@ mkSub tname = do c <- liftIO $ newBoundedChan recvBufferSize
                  let topicType = msgTypeName (undefined::a)
                      --updateStats = recvMessageStat stats
                      --addSource' = flip runReaderT r . addSource tname updateStats c
-                     sub = Subscription known topicType (DynBoundedChan c) (DynTopic stream') stats
+                     sub = Subscription {-known-} topicType (DynBoundedChan c) (DynTopic stream') stats
                  return (stream',sub)
 
 -- hpacheco: support multiple publishers within the same node
@@ -121,7 +121,7 @@ mkPubAux trep t tchan bufferSize =
        let cleanup = return ()
        known <- liftIO $ newTVarIO S.empty
        cleanup' <- configured cleanup
-       return $ Publication known trep cleanup' (DynBoundedChan tchan) (DynTopic t) stats
+       return $ Publication {-known-} trep cleanup' (DynBoundedChan tchan) (DynTopic t) stats
 
 -- |Subscribe to the given Topic. Returns a 'Ros.Topic.Util.share'd 'Topic'.
 subscribe_ :: (RosBinary a, MsgInfo a, Typeable a)
@@ -233,13 +233,13 @@ getNamespace = namespace <$> get
 -- |Run a ROS Node.
 runNode :: NodeName -> Node a -> IO ()
 runNode name (Node nConf) =
-    do myURI <- newEmptyMVar
+    do --myURI <- newEmptyMVar
        sigStop <- newEmptyMVar
        env <- liftIO getEnvironment
        (conf, args) <- parseAppConfig <$> liftIO getArgs
        let getConfig' var def = maybe def id $ lookup var env
            getConfig = flip lookup env
-           masterConf = getConfig' "ROS_MASTER_URI" "http://localhost:11311"
+           --masterConf = getConfig' "ROS_MASTER_URI" "http://localhost:11311"
            namespaceConf = let ns = getConfig' "ROS_NAMESPACE" "/"
                            in if last ns == '/' then ns else ns ++ "/"
            (nameMap, params) = parseRemappings args
@@ -259,13 +259,13 @@ runNode name (Node nConf) =
             (putStrLn $ "Remapping name(s) "++show nameMap')
        when (not $ null params')
             (putStrLn $ "Setting parameter(s) "++show params')
-       case getConfig "ROS_IP" of
-         Nothing -> case getConfig "ROS_HOSTNAME" of
-                      Nothing -> return ()
-                      Just n -> putMVar myURI $! "http://"++n
-         Just ip -> putMVar myURI $! "http://"++ip
+       --case getConfig "ROS_IP" of
+       --  Nothing -> case getConfig "ROS_HOSTNAME" of
+       --               Nothing -> return ()
+       --               Just n -> putMVar myURI $! "http://"++n
+       --  Just ip -> putMVar myURI $! "http://"++ip
        let configuredNode = runReaderT nConf (NodeConfig params' nameMap' conf)
-           initialState = NodeState name' namespaceConf masterConf myURI
+           initialState = NodeState name' namespaceConf {-masterConf myURI-}
                                     sigStop M.empty M.empty
            statefulNode = execStateT configuredNode initialState
        statefulNode >>= flip runReaderT conf . RN.runNode name'

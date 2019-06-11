@@ -23,9 +23,9 @@ import Ros.Topic (Topic)
 import Ros.Topic.Stats
 import Data.Typeable (gcast)
 
-data Subscription = Subscription { knownPubs :: TVar (Set URI)
+data Subscription = Subscription { --knownPubs :: TVar (Set URI)
                                  --, addPub    :: URI -> IO ThreadId
-                                 , subType   :: String
+                                   subType   :: String
                                  , subChan   :: DynBoundedChan
                                  , subTopic  :: DynTopic
                                  , subStats  :: StatMap SubStats }
@@ -42,8 +42,8 @@ data DynBoundedChan where
 fromDynBoundedChan :: Typeable a => DynBoundedChan -> Maybe (BoundedChan a)
 fromDynBoundedChan (DynBoundedChan t) = gcast t
 
-data Publication = Publication { subscribers :: TVar (Set URI)
-                               , pubType     :: String
+data Publication = Publication { --subscribers :: TVar (Set URI)
+                                 pubType     :: String
                                --, pubPort     :: Int
                                , pubCleanup  :: IO ()
                                , pubChan     :: DynBoundedChan
@@ -52,8 +52,8 @@ data Publication = Publication { subscribers :: TVar (Set URI)
 
 data NodeState = NodeState { nodeName       :: String
                            , namespace      :: String
-                           , master         :: URI
-                           , nodeURI        :: MVar URI
+                           --, master         :: URI
+                           --, nodeURI        :: MVar URI
                            , signalShutdown :: MVar (IO ())
                            , subscriptions  :: Map String Subscription
                            , publications   :: Map String Publication }
@@ -79,9 +79,9 @@ instance MonadReader NodeConfig Node where
     local f m = Node $ withReaderT f (unNode m)
 
 --instance RosSlave NodeState where
-getMaster = master
+--getMaster = master
 getNodeName = nodeName
-getNodeURI = nodeURI
+--getNodeURI = nodeURI
 --    getSubscriptions = atomically . mapM formatSub . M.toList . subscriptions
 --        where formatSub (name, sub) = let topicType = subType sub
 --                                      in do stats <- readTVar (subStats sub)
@@ -111,10 +111,10 @@ getNodeURI = nodeURI
 --        in act
 --    getTopicPortTCP = ((pubPort <$> ) .) . flip M.lookup . publications
 --    
-stopNode = mapM_ (pubCleanup . snd) . M.toList . publications
+--stopNode = mapM_ (pubCleanup . snd) . M.toList . publications
 
 setShutdownAction ns a = putMVar (signalShutdown ns) a
-cleanupNode = stopNode
+--cleanupNode = stopNode
 
 -- If a given URI is not a part of a Set of known URIs, add an action
 -- to effect a subscription to an accumulated action and add the URI
