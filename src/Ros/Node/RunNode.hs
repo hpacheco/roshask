@@ -18,8 +18,9 @@ import qualified Data.Map as Map
 import Data.Typeable (gcast)
 
 import Data.Maybe
+import Data.Typeable
 import Control.Monad
-import Ghc.Conc
+import GHC.Conc
 
 -- Inform the master that we are publishing a particular topic.
 registerPublication :: RosSlave n => 
@@ -51,10 +52,13 @@ registerLocalSubscription (topicname,(pub,sub)) = do
     redirectChan :: DynTopic -> DynBoundedChan -> Config (Maybe ThreadId)
     redirectChan (DynTopic from) (DynBoundedChan (to::BoundedChan b)) = 
         case gcast from of
-            Nothing -> return Nothing
+            Nothing -> do
+                debug $ "Warning: Topic " ++ topicname ++ "published with type " ++ show (typeOf from) ++ " but subscribed with type " ++ show (typeOf to)
+                return Nothing
             Just (from'::Topic IO b) -> do
+                --liftIO $ putStrLn $ "redirecting " ++ topicname
                 let go t = do { (x,t') <- runTopic t; writeChan to x; go t' }
-                liftm Just $ forkConfig $ liftIO $ go from'
+                liftM Just $ forkConfig $ liftIO $ go from'
 
 registerNode :: String -> NodeState -> Config [ThreadId]
 registerNode name n = 
@@ -65,6 +69,8 @@ registerNode name n =
        subs <- liftIO $ getSubscriptions n
        mapM_ (registerPublication name n master uri) pubs
        mapM_ (registerSubscription name n master uri) subs
+       --liftIO $ putStrLn $ "pubs " ++ show (Map.keys $ publications n)
+       --liftIO $ putStrLn $ "subs " ++ show (Map.keys $ subscriptions n)
        let pubsubs = Map.intersectionWithKey (\k p s -> (p,s)) (publications n) (subscriptions n)
        liftM catMaybes $ mapM (registerLocalSubscription) (Map.toList pubsubs)
 
