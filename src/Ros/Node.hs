@@ -141,7 +141,7 @@ subscribe_ name =
              --  then return . fromDynErr . pubTopic $ pubs M.! name'
              (stream,sub) <- liftIO $ runReaderT (mkSub name') r
              put n { subscriptions = M.insert name' sub subs }
-             return $ stream
+             return stream
 --  where fromDynErr = maybe (error msg) id . fromDynTopic
 --        msg = "Subscription to "++name++" at a different type than "++
 --              "what that Topic was already advertised at by this Node."
