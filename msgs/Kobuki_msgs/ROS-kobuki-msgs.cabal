@@ -24,6 +24,7 @@ Library
                    Ros.Kobuki_msgs.Sound
 --                   Ros.Kobuki_msgs.VersionInfo
                    Ros.Kobuki_msgs.WheelDropEvent
+                   Ros.Kobuki_msgs.RobotStateEvent
 
   Build-Depends:   base >= 4.2 && < 6,
                    vector > 0.7,
