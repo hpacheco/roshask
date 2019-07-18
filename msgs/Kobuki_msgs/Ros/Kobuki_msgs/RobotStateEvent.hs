@@ -34,7 +34,7 @@ instance RosBinary RobotStateEvent where
 instance Storable RobotStateEvent where
   sizeOf _ = sizeOf (P.undefined::Word.Word8)
   alignment _ = 8
-  peek = SM.runStorable (Led <$> SM.peek)
+  peek = SM.runStorable (RobotStateEvent <$> SM.peek)
   poke ptr' obj' = SM.runStorable store' ptr'
     where store' = SM.poke (_state obj')
 
