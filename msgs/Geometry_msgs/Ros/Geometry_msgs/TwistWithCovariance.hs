@@ -25,8 +25,8 @@ data TwistWithCovariance = TwistWithCovariance { _twist :: Twist.Twist
 $(makeLenses ''TwistWithCovariance)
 
 instance RosBinary TwistWithCovariance where
-  put obj' = put (_twist obj') *> put (_covariance obj')
-  get = TwistWithCovariance <$> get <*> get
+  put obj' = put (_twist obj') *> putFixed (_covariance obj')
+  get = TwistWithCovariance <$> get <*> getFixed 36
 
 instance Storable TwistWithCovariance where
   sizeOf _ = sizeOf (P.undefined::Twist.Twist) +
