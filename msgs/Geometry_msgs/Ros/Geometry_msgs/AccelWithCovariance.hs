@@ -25,8 +25,8 @@ data AccelWithCovariance = AccelWithCovariance { _accel :: Accel.Accel
 $(makeLenses ''AccelWithCovariance)
 
 instance RosBinary AccelWithCovariance where
-  put obj' = put (_accel obj') *> put (_covariance obj')
-  get = AccelWithCovariance <$> get <*> get
+  put obj' = put (_accel obj') *> putFixed (_covariance obj')
+  get = AccelWithCovariance <$> get <*> getFixed 36
 
 instance Storable AccelWithCovariance where
   sizeOf _ = sizeOf (P.undefined::Accel.Accel) +

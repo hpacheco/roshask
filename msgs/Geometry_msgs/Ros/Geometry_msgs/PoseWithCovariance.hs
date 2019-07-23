@@ -25,8 +25,8 @@ data PoseWithCovariance = PoseWithCovariance { _pose :: Pose.Pose
 $(makeLenses ''PoseWithCovariance)
 
 instance RosBinary PoseWithCovariance where
-  put obj' = put (_pose obj') *> put (_covariance obj')
-  get = PoseWithCovariance <$> get <*> get
+  put obj' = put (_pose obj') *> putFixed (_covariance obj')
+  get = PoseWithCovariance <$> get <*> getFixed 36
 
 instance Storable PoseWithCovariance where
   sizeOf _ = sizeOf (P.undefined::Pose.Pose) +
