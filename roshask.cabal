@@ -94,13 +94,13 @@ Library
     Build-depends:     template-haskell
 
   -- Packages needed in order to build this package.
-  Build-depends:       base >= 4.5 && < 6,
+  Build-depends:       base >= 4.5 && < 6, time-out, time-units,
                        binary >= 0.7.2.1,
                        bytestring,
                        containers,
                        network >= 2.3,
                        Cabal >= 1.20,
-                       stm >= 2.1.2,
+                       stm >= 2.1.2, thread-hierarchy,
                        mtl >= 2.2.1,
                        time >= 1.1,
                        BoundedChan >= 1.0.0.2,

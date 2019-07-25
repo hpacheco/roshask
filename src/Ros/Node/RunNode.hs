@@ -1,10 +1,11 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 
 module Ros.Node.RunNode (runNode) where
-import Control.Concurrent (readMVar,forkIO, killThread)
+import Control.Concurrent (readMVar, killThread)
 import qualified Control.Concurrent.SSem as Sem
 import qualified Control.Exception as E
 import Control.Concurrent.BoundedChan
+import Control.Monad.Reader (runReaderT,ask)
 import Control.Monad.IO.Class
 import System.Posix.Signals (installHandler, Handler(..), sigINT)
 import Ros.Internal.RosTypes
@@ -14,6 +15,7 @@ import Ros.Graph.Slave
 import Ros.Internal.Util.AppConfig
 import Ros.Node.Type
 import Ros.Topic (Topic,runTopic)
+import Ros.Topic.Util (TIO)
 import qualified Data.Map as Map
 import Data.Typeable (gcast)
 
@@ -45,22 +47,25 @@ registerSubscription name n master uri (tname, ttype, _) = orErrorConfig_ "Warni
        return ()
 
 -- Redirect local publishers to local subscribers
-registerLocalSubscription :: (String,(Publication,Subscription)) -> Config (Maybe ThreadId)
+registerLocalSubscription :: (String,(Publication,Subscription)) -> Config ()
 registerLocalSubscription (topicname,(pub,sub)) = do
     redirectChan (pubTopic pub) (subChan sub)
   where
-    redirectChan :: DynTopic -> DynBoundedChan -> Config (Maybe ThreadId)
+    redirectChan :: DynTopic -> DynBoundedChan -> Config ()
     redirectChan (DynTopic from) (DynBoundedChan (to::BoundedChan b)) = 
         case gcast from of
             Nothing -> do
                 debug $ "Warning: Topic " ++ topicname ++ "published with type " ++ show (typeOf from) ++ " but subscribed with type " ++ show (typeOf to)
-                return Nothing
-            Just (from'::Topic IO b) -> do
+                return ()
+            Just (from'::Topic TIO b) -> do
                 --liftIO $ putStrLn $ "redirecting " ++ topicname
-                let go t = do { (x,t') <- runTopic t; writeChan to x; go t' }
-                liftM Just $ forkConfig $ liftIO $ go from'
+                let go t = do { (x,t') <- runTopic t; liftIO (writeChan to x); go t' }
+                _ <- forkConfig $ do
+                    (_,ts) <- ask
+                    liftIO $ runReaderT (go from') ts
+                return ()
 
-registerNode :: String -> NodeState -> Config [ThreadId]
+registerNode :: String -> NodeState -> Config ()
 registerNode name n = 
     do uri <- liftIO $ readMVar (getNodeURI n)
        let master = getMaster n
@@ -72,20 +77,20 @@ registerNode name n =
        --liftIO $ putStrLn $ "pubs " ++ show (Map.keys $ publications n)
        --liftIO $ putStrLn $ "subs " ++ show (Map.keys $ subscriptions n)
        let pubsubs = Map.intersectionWithKey (\k p s -> (p,s)) (publications n) (subscriptions n)
-       liftM catMaybes $ mapM (registerLocalSubscription) (Map.toList pubsubs)
+       mapM_ (registerLocalSubscription) (Map.toList pubsubs)
 
 -- |Run a ROS Node with the given name. Returns when the Node has
 -- shutdown either by receiving an interrupt signal (e.g. Ctrl-C) or
 -- because the master told it to stop.
 runNode :: String -> NodeState -> Config ()
 runNode name s = do (wait, _port) <- liftIO $ runSlave s
-                    threads <- registerNode name s
+                    registerNode name s
                     debug "Spinning"
                     allDone <- liftIO $ Sem.new 0
                     let ignoreEx :: E.SomeException -> IO ()
                         ignoreEx _ = return ()
                         shutdown = do putStrLn "Shutting down"
-                                      (cleanupNode s >> mapM_ killThread threads) `E.catch` ignoreEx
+                                      (cleanupNode s) `E.catch` ignoreEx
                                       Sem.signal allDone
                     liftIO $ setShutdownAction s shutdown
                     _ <- liftIO $ 

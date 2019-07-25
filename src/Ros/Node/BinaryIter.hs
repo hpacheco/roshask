@@ -11,6 +11,7 @@ import qualified Data.ByteString as BS
 import qualified Data.ByteString.Lazy as BL
 import System.IO (Handle)
 import Ros.Topic
+import Ros.Topic.Util (TIO)
 import Ros.Internal.RosBinary (RosBinary(get))
 import Ros.Service.ServiceTypes(ServiceResponseExcept(..))
 import Data.ByteString.Lazy.Char8 (unpack)
@@ -29,13 +30,14 @@ hGetAll h n = go n []
 
 -- |The function that does the work of streaming members of the
 -- 'RosBinary' class in from a 'Handle'.
-streamIn :: RosBinary a => Handle -> Topic IO a
+streamIn :: RosBinary a => Handle -> Topic TIO a
 streamIn h = Topic go 
-  where go = do item <- runMaybeT $ do len <- runGet getInt <$> hGetAll h 4
-                                       runGet get <$> hGetAll h len
+  where go = do item <- liftIO $ runMaybeT $ do
+                          len <- runGet getInt <$> hGetAll h 4
+                          runGet get <$> hGetAll h len
                 case item of
-                  Nothing -> putStrLn "Publisher stopped" >>
-                             myThreadId >>= killThread >>
+                  Nothing -> liftIO (putStrLn "Publisher stopped") >>
+                             liftIO (myThreadId >>= killThread) >>
                              return undefined
                   Just item' -> return (item', Topic go)
 

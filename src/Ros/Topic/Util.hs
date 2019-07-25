@@ -8,8 +8,11 @@ import Control.Applicative
 import Control.Arrow ((***), second)
 import Control.Concurrent hiding (yield)
 import Control.Concurrent.STM
+import Control.Concurrent.Hierarchy
 import Control.Monad ((<=<), when, replicateM,foldM)
 import Control.Monad.IO.Class
+import Control.Monad.Trans (lift)
+import Control.Monad.Reader (Reader(..),ReaderT(..),ask)
 import Data.AdditiveGroup (AdditiveGroup, (^+^), (^-^), Sum(..))
 import Data.Monoid (Monoid)
 import Data.Sequence ((|>), viewl, ViewL(..))
@@ -18,17 +21,31 @@ import qualified Data.Foldable as F
 import Ros.Rate (rateLimiter)
 import Ros.Topic hiding (mapM_)
 
+import Ros.Internal.Util.AppConfig
+
+forkTIO :: TIO () -> TIO ThreadId
+forkTIO m = do
+    ts <- ask
+    liftIO $ newChild ts $ \ts' -> runReaderT m ts'
+
+configTIO :: TIO a -> Config a
+configTIO m = do
+    (r,ts) <- ask
+    liftIO $ runReaderT m ts
+
+type TIO = ReaderT ThreadMap IO
+
 repeat :: (Functor m, Monad m) => a -> Topic m a
 repeat a = fromList (P.repeat a)
 
 -- |Produce an infinite list from a 'Topic'.
-toList :: Topic IO a -> IO [a]
-toList t0 = do c <- newChan
+toList :: Topic TIO a -> TIO [a]
+toList t0 = do c <- liftIO $ newChan
                let feed t = do (x, t') <- runTopic t
-                               writeChan c x
+                               liftIO $ writeChan c x
                                feed t'
-               _ <- forkIO $ feed t0
-               getChanContents c
+               _ <- forkTIO $ feed t0
+               liftIO $ getChanContents c
 
 -- |Produce a 'Topic' from an infinite list.
 fromList :: Monad m => [a] -> Topic m a
@@ -52,20 +69,21 @@ fromList [] = error "Ran out of list elements"
 -- elements from a 'Topic'. If the 'Topic' was instead 'share'd, then
 -- one consumer might get the first value from the 'Topic' before the
 -- second consumer's buffer is created since buffer creation is lazy.
-tee :: Topic IO a -> IO (Topic IO a, Topic IO a)
-tee t0 = do c1 <- newTChanIO
-            c2 <- newTChanIO
-            signal <- newTVarIO True
-            let feed c = do atomically $ do f <- isEmptyTChan c
-                                            when f (writeTVar signal False)
-                            atomically $ readTChan c
-                produce t = do atomically $ readTVar signal >>= flip when retry
+tee :: Topic TIO a -> TIO (Topic TIO a, Topic TIO a)
+tee t0 = do c1 <- liftIO $ newTChanIO
+            c2 <- liftIO $ newTChanIO
+            signal <- liftIO $ newTVarIO True
+            let feed c = do liftIO $ atomically $ do
+                                f <- isEmptyTChan c
+                                when f (writeTVar signal False)
+                            liftIO $ atomically $ readTChan c
+                produce t = do liftIO $ atomically $ readTVar signal >>= flip when retry
                                (x,t') <- runTopic t
-                               atomically $ writeTChan c1 x >>
+                               liftIO $ atomically $ writeTChan c1 x >>
                                             writeTChan c2 x >>
                                             writeTVar signal True
                                produce t'
-            _ <- forkIO $ produce t0
+            _ <- forkTIO $ produce t0
             return (repeatM (feed c1), repeatM (feed c2))
 
 -- |This version of @tee@ eagerly pulls data from the
@@ -74,13 +92,13 @@ tee t0 = do c1 <- newTChanIO
 -- instance, using 'interruptible' with 'teeEager' will likely not
 -- work well. However, 'teeEager' may have slightly better performance
 -- than 'tee'.
-teeEager :: Topic IO a -> IO (Topic IO a, Topic IO a)
-teeEager t = do c1 <- newChan
-                c2 <- newChan
-                let feed c = do x <- readChan c
+teeEager :: Topic TIO a -> TIO (Topic TIO a, Topic TIO a)
+teeEager t = do c1 <- liftIO newChan
+                c2 <- liftIO newChan
+                let feed c = do x <- liftIO (readChan c)
                                 return (x, Topic $ feed c)
-                _ <- forkIO . forever . join $
-                     (\x -> writeChan c1 x >> writeChan c2 x) <$> t
+                _ <- forkTIO . forever . join $
+                     (\x -> liftIO (writeChan c1 x) >> liftIO (writeChan c2 x)) <$> t
                 return (Topic $ feed c1, Topic $ feed c2)
 
 -- |Fan out one 'Topic' out to a number of duplicate 'Topic's, each of
@@ -88,19 +106,21 @@ teeEager t = do c1 <- newChan
 -- original 'Topic''s production will occur only once. This is useful
 -- when a known number of consumers must see exactly all the same
 -- elements.
-fan :: Int -> Topic IO a -> IO [Topic IO a]
-fan n t0 = do cs <- replicateM n newTChanIO
-              signal <- newTVarIO True
-              let feed c = do atomically $ do f <- isEmptyTChan c
-                                              when f (writeTVar signal False)
-                              atomically $ readTChan c
-                  produce t = do atomically $ readTVar signal >>= flip when retry
+fan :: Int -> Topic TIO a -> TIO [Topic TIO a]
+fan n t0 = do cs <- replicateM n (liftIO newTChanIO)
+              signal <- liftIO (newTVarIO True)
+              let feed c = do liftIO $ atomically $ do
+                                  f <- isEmptyTChan c
+                                  when f (writeTVar signal False)
+                              liftIO $ atomically $ readTChan c
+                  produce t = do liftIO $ atomically $ readTVar signal >>= flip when retry
                                  (x,t') <- runTopic t
-                                 atomically $ mapM_ (flip writeTChan x) cs >>
+                                 liftIO $ atomically $ mapM_ (flip writeTChan x) cs >>
                                               writeTVar signal True
                                  produce t'
-              _ <- forkIO $ produce t0
-              return $ P.map (repeatM . feed) cs
+              _ <- forkTIO $ produce t0
+              return $ map (repeatM . feed) cs
+
 
 -- |Make a 'Topic' shareable among multiple consumers. Each consumer
 -- of a Topic gets its own read buffer automatically as soon as it
@@ -110,9 +130,9 @@ fan n t0 = do cs <- replicateM n newTChanIO
 -- produced by the 'Topic', while consumer /B/ gets the other half
 -- with some unpredictable interleaving). Note that Topics returned by
 -- the @Ros.Node.subscribe@ are already shared.
-share :: Topic IO a -> IO (Topic IO a)
-share t0 = do cs <- newTVarIO [] -- A list for the individual client buffers
-              signal <- newTVarIO True
+share :: Topic TIO a -> TIO (Topic TIO a)
+share t0 = do cs <- liftIO $ newTVarIO [] -- A list for the individual client buffers
+              signal <- liftIO $ newTVarIO True
               let addClient = atomically $ do cs0 <- readTVar cs
                                               c <- newTChan
                                               writeTVar cs (c:cs0)
@@ -120,14 +140,41 @@ share t0 = do cs <- newTVarIO [] -- A list for the individual client buffers
                   feed c = do atomically $ do f <- isEmptyTChan c
                                               when f (writeTVar signal False)
                               atomically $ readTChan c
-                  produce t = do atomically $ readTVar signal >>= flip when retry
+                  produce t = do lift $ atomically $ readTVar signal >>= flip when retry
                                  (x,t') <- runTopic t
-                                 atomically $ do cs' <- readTVar cs
-                                                 mapM_ (flip writeTChan x) cs'
-                                                 writeTVar signal True
+                                 lift $ atomically $ do
+                                     cs' <- readTVar cs
+                                     mapM_ (flip writeTChan x) cs'
+                                     writeTVar signal True
                                  produce t'
-              _ <- forkIO $ produce t0
-              return . Topic $ addClient >>= runTopic . repeatM . feed
+              _ <- forkTIO $ produce t0
+              return . Topic $ lift addClient >>= runTopic . repeatM . lift . feed
+
+shareUnsafe :: Topic TIO a -> TIO (Topic TIO a,ThreadId)
+shareUnsafe t0 = do
+    cs <- liftIO $ newTVarIO [] -- A list for the individual client buffers
+    signal <- liftIO $ newTVarIO True
+    let addClient = liftIO $ atomically $ do
+            cs0 <- readTVar cs
+            c <- newTChan
+            writeTVar cs (c:cs0)
+            return c
+    let feed c = do
+            liftIO $ atomically $ do
+                f <- isEmptyTChan c
+                when f (writeTVar signal False)
+            liftIO $ atomically $ readTChan c
+    let produce t = do
+            liftIO $ atomically $ readTVar signal >>= flip when retry
+            (x,t') <- runTopic t
+            liftIO $ atomically $ do
+                cs' <- readTVar cs
+                mapM_ (flip writeTChan x) cs'
+                writeTVar signal True
+            produce t'
+    ts <- ask
+    tid <- lift $ forkIO $ runReaderT (produce t0) ts
+    return (Topic $ addClient >>= runTopic . repeatM . feed,tid)
 
 -- |The application @topicRate rate t@ runs 'Topic' @t@ no faster than
 -- @rate@ Hz.
@@ -141,7 +188,7 @@ topicRate p t0 = Topic $
 -- |Splits a 'Topic' into two 'Topic's: the elements of the first
 -- 'Topic' all satisfy the given predicate, while none of the elements
 -- of the second 'Topic' do.
-partition :: (a -> Bool) -> Topic IO a -> IO (Topic IO a, Topic IO a)
+partition :: (a -> Bool) -> Topic TIO a -> TIO (Topic TIO a, Topic TIO a)
 partition p = fmap (filter p *** filter (not . p)) . tee
 
 -- |Returns a 'Topic' whose values are consecutive values from the
@@ -158,15 +205,15 @@ consecutive = metamorph startup
 -- |Interleave two 'Topic's. Items from each component 'Topic' will be
 -- tagged with an 'Either' constructor and added to the combined
 -- 'Topic' as they become available.
-(<+>) :: Topic IO a -> Topic IO b -> Topic IO (Either a b)
-(<+>) t1 t2 = Topic $ do c <- newChan
-                         let aux = do x <- readChan c
+(<+>) :: Topic TIO a -> Topic TIO b -> (Topic TIO (Either a b))
+(<+>) t1 t2 = Topic $ do c <- liftIO newChan
+                         let aux = do x <- liftIO (readChan c)
                                       return (x, Topic aux)
                              feed t = do (x,t') <- runTopic t
-                                         writeChan c x
+                                         liftIO (writeChan c x)
                                          feed t'
-                         _ <- forkIO $ feed (fmap Left t1)
-                         _ <- forkIO $ feed (fmap Right t2)
+                         _ <- forkTIO $ feed (fmap Left t1)
+                         _ <- forkTIO $ feed (fmap Right t2)
                          aux
 infixl 7 <+>
 
@@ -176,7 +223,7 @@ infixl 7 <+>
 -- resulting 'Topic' will produce a new value at the rate of the
 -- faster component 'Topic', and may contain duplicate consecutive
 -- elements.
-everyNew :: Topic IO a -> Topic IO b -> Topic IO (a,b)
+everyNew :: Topic TIO a -> Topic TIO b -> (Topic TIO (a,b))
 everyNew t1 t2 = Topic $ warmup =<< runTopic (t1 <+> t2)
   where warmup (Left x, t)     = warmupR x =<< runTopic t
         warmup (Right y, t)    = warmupL y =<< runTopic t
@@ -191,7 +238,7 @@ everyNew t1 t2 = Topic $ warmup =<< runTopic (t1 <+> t2)
 -- component 'Topic's have produced a new value. The composite
 -- 'Topic' will produce pairs at the rate of the slower component
 -- 'Topic' consisting of the most recent value from each 'Topic'.
-bothNew :: Topic IO a -> Topic IO b -> Topic IO (a,b)
+bothNew :: Topic TIO a -> Topic TIO b -> (Topic TIO (a,b))
 bothNew t1 t2 = Topic $ warmup =<< runTopic (t1 <+> t2)
   where warmup (v,t) = go v =<< runTopic t
         go (Left _) (l@(Left _), t) = go l =<< runTopic t
@@ -203,7 +250,7 @@ bothNew t1 t2 = Topic $ warmup =<< runTopic (t1 <+> t2)
 -- first topic produces a new value, followed by a new value from the
 -- second topic. This can be used for sampling the first topic with
 -- the second topic.
-firstThenSecond :: Topic IO a -> Topic IO b -> Topic IO (a,b)
+firstThenSecond :: Topic TIO a -> Topic TIO b -> (Topic TIO (a,b))
 firstThenSecond t1 t2 = leftThenRight (t1 <+> t2)
 
 -- |Produces a value when a Left value is followed by a Right value.
@@ -216,10 +263,10 @@ leftThenRight t1 = Topic $ warmup =<< runTopic t1
 -- |Merge two 'Topic's into one. The items from each component
 -- 'Topic' will be added to the combined 'Topic' as they become
 -- available.
-merge :: Topic IO a -> Topic IO a -> Topic IO a
+merge :: Topic TIO a -> Topic TIO a -> (Topic TIO a)
 merge t1 t2 = either id id <$> t1 <+> t2
 
-mergeList :: [Topic IO a] -> Topic IO a
+mergeList :: [Topic TIO a] -> (Topic TIO a)
 mergeList (x:xs) = foldr merge x xs
 
 -- |Apply a function to each consecutive pair of elements from a 'Topic'.
@@ -318,34 +365,34 @@ concats t = Topic $ do (x, t') <- runTopic t
 -- |Flatten a 'Topic' of 'F.Foldable' values such that old values are
 -- discarded as soon as the original 'Topic' produces a new
 -- 'F.Foldable'.
-interruptible :: F.Foldable t => Topic IO (t a) -> Topic IO a
+interruptible :: F.Foldable t => Topic TIO (t a) -> (Topic TIO a)
 interruptible s = Topic $
-    do feeder <- newEmptyMVar         -- Active feeder thread
-       latestItem <- newEmptyMVar     -- Next available item
-       signal <- newEmptyMVar         -- Demand signal
-       let feedItems ys = do ft <- tryTakeMVar feeder
-                             maybe (return ()) killThread ft
-                             t <- forkIO $ 
-                                  F.traverse_ (\y -> takeMVar signal >> 
-                                                     putMVar latestItem y) 
+    do feeder <- liftIO newEmptyMVar         -- Active feeder thread
+       latestItem <- liftIO newEmptyMVar     -- Next available item
+       signal <- liftIO newEmptyMVar         -- Demand signal
+       let feedItems ys = do ft <- liftIO (tryTakeMVar feeder)
+                             maybe (return ()) (liftIO . killThread) ft
+                             t <- forkTIO $ 
+                                  F.traverse_ (\y -> liftIO (takeMVar signal) >> 
+                                                     liftIO (putMVar latestItem y)) 
                                               ys
-                             putMVar feeder t 
+                             liftIO (putMVar feeder t )
            watchForItems t = do (x,t') <- runTopic t
                                 feedItems x 
                                 watchForItems t'
-           getAll = do putMVar signal ()
-                       x <- takeMVar latestItem
+           getAll = do liftIO (putMVar signal ())
+                       x <- liftIO (takeMVar latestItem)
                        return (x, Topic getAll)
-       _ <- forkIO $ watchForItems s
+       _ <- forkTIO $ watchForItems s
        getAll
 
 -- |Pull elements from a 'Topic' in a new thread. This allows 'IO'
 -- 'Topic's to run at different rates even if they are consumed by a
 -- single thread.
-forkTopic :: Topic IO a -> IO (Topic IO a)
-forkTopic t = do c <- newChan
-                 _ <- forkIO . forever . join $ fmap (writeChan c) t
-                 let feed = Topic $ (\x -> (x,feed)) <$> readChan c
+forkTopic :: Topic TIO a -> TIO (Topic TIO a)
+forkTopic t = do c <- lift $ newChan
+                 _ <- forkTIO . forever . join $ fmap (liftIO . writeChan c) t
+                 let feed = Topic $ (\x -> (x,feed)) <$> lift (readChan c)
                  return feed
 
 -- |Sliding window over a 'Monoid'. @slidingWindow n t@ slides a

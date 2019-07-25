@@ -2,7 +2,7 @@
 module Ros.Node.RosTcp (subStream, runServer, runServers, callServiceWithMaster) where
 import Control.Applicative ((<$>))
 import Control.Arrow (first)
-import Control.Concurrent (forkIO, killThread, newEmptyMVar, takeMVar, putMVar)
+import Control.Concurrent (killThread, newEmptyMVar, takeMVar, putMVar)
 import Control.Concurrent.STM (atomically)
 import Control.Concurrent.STM.TVar
 import Control.Concurrent.BoundedChan (BoundedChan(..))
@@ -31,8 +31,9 @@ import Ros.Internal.Msg.SrvInfo
 import Ros.Internal.RosBinary
 import Ros.Internal.RosTypes
 import Ros.Internal.Util.RingChan
-import Ros.Internal.Util.AppConfig (Config, debug, forkConfig)
+import Ros.Internal.Util.AppConfig (Config, debug, forkConfig,forkConfigUnsafe)
 import Ros.Topic (Topic(..))
+import Ros.Topic.Util (TIO,configTIO)
 import Ros.Node.ConnectionHeader
 import Ros.Graph.Slave (requestTopicClient)
 import Ros.Graph.Master (lookupService)
@@ -107,7 +108,7 @@ acceptClients sock clients negotiate mkBuffer = forever acceptClient
                                          shutdown client ShutdownBoth `E.catch`
                                            \(_::E.SomeException) -> return ()
                             r <- ask
-                            t <- liftIO . forkIO $ 
+                            t <- forkConfigUnsafe $ liftIO $
                                  serviceClient chan client `E.catch` 
                                    \(_::E.SomeException) -> runReaderT cleanup1 r
                             let cleanup2 = cleanup1 >>
@@ -118,12 +119,12 @@ acceptClients sock clients negotiate mkBuffer = forever acceptClient
 
 -- |Publish each item obtained from a 'Topic' to each connected client.
 pubStream :: RosBinary a
-          => Topic IO a -> TVar [(b, RingChan ByteString)] -> Config ()
-pubStream t0 clients = liftIO $ go 0 t0
+          => Topic TIO a -> TVar [(b, RingChan ByteString)] -> Config ()
+pubStream t0 clients = configTIO $ go 0 t0
   where go !n t = do (x, t') <- runTopic t
                      let bytes = runPut $ putMsg n x
-                     cs <- readTVarIO clients
-                     mapM_ (flip writeChan bytes . snd) cs
+                     cs <- liftIO $ readTVarIO clients
+                     liftIO $ mapM_ (flip writeChan bytes . snd) cs
                      go (n+1) t'
 
 -- |Produce a publishing action associated with a list of
@@ -167,7 +168,7 @@ negotiateSub sock tname ttype md5 =
 -- |Connect to a publisher and return the stream of data it is
 -- publishing.
 subStream :: forall a. (RosBinary a, MsgInfo a) => 
-             URI -> String -> (Int -> IO ()) -> Config (Topic IO a)
+             URI -> String -> (Int -> IO ()) -> Config (Topic TIO a)
 subStream target tname _updateStats = 
     do debug $ "Opening stream to " ++target++" for "++tname
        h <- liftIO $ 
@@ -307,9 +308,9 @@ runServerAux negotiate pubAction _updateStats bufferSize =
                 liftIO $ listen sock 5
                 clients <- liftIO $ newTVarIO []
                 let mkBuffer = newRingChan bufferSize
-                acceptThread <- forkConfig $
+                acceptThread <- forkConfigUnsafe $
                                 acceptClients sock clients negotiate mkBuffer
-                pubThread <- forkConfig $ pubAction clients
+                pubThread <- forkConfigUnsafe $ pubAction clients
                 let cleanup = liftIO (atomically (readTVar clients)) >>= 
                               sequence_ . map fst >> 
                               liftIO (shutdown sock ShutdownBoth >>
@@ -323,7 +324,7 @@ runServerAux negotiate pubAction _updateStats bufferSize =
 -- this publication server along with the port the server is listening
 -- on.
 runServer :: forall a. (RosBinary a, MsgInfo a) => 
-             Topic IO a -> (URI -> Int -> IO ()) -> Int -> 
+             Topic TIO a -> (URI -> Int -> IO ()) -> Int -> 
              Config (Config (), Int)
 runServer stream = runServerAux (mkPubNegotiator (undefined::a)) 
                                 (pubStream stream)

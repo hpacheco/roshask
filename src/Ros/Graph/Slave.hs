@@ -2,7 +2,7 @@
 module Ros.Graph.Slave (RosSlave(..), runSlave, requestTopicClient,
                        cleanupNode) where
 import Control.Applicative
-import Control.Concurrent (killThread, forkIO, threadDelay, MVar, putMVar,
+import Control.Concurrent (forkIO, killThread, threadDelay, MVar, putMVar,
                            isEmptyMVar, readMVar, modifyMVar_)
 import Control.Concurrent.SSem (SSem)
 import qualified Control.Concurrent.SSem as Sem

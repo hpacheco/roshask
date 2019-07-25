@@ -10,6 +10,7 @@
 -- A@), an explicit import list, or a @hiding@ clause.
 module Ros.Topic.Arrow where
 
+import Control.Concurrent (ThreadId)
 import Ros.Internal.RosBinary (RosBinary)
 import Ros.Internal.Msg.MsgInfo (MsgInfo)
 import Ros.Node (Node, Topic, TopicName, Subscribe, Advertise,
@@ -45,12 +46,12 @@ instance (Functor m, Applicative m) => Arrow (TopicArrow m) where
                                       <<< f . (fst <$>) &&& (snd <$>)
 
 -- |Simple Subscribe instance
-instance Subscribe (TopicArrow IO ()) where
+instance Subscribe (TopicArrow U.TIO ()) where
   subscribe n =
     (TopicArrow . const) <$> subscribe n
 
 -- |Simple Advertise instance
-instance Advertise (TopicArrow IO ()) where
+instance Advertise (TopicArrow U.TIO ()) where
   advertiseBuffered c n a =
     let emptyTopic = T.repeatM $ return ()
      in advertiseBuffered c n $ runTopicArrow a emptyTopic
@@ -64,14 +65,14 @@ class Arrow a => Connect a where
 instance Connect (->) where
   connect a b = connect' a b . linkFn
 
-instance Connect (TopicArrow IO) where
+instance Connect (TopicArrow U.TIO) where
   connect a b = connect' a b . linkTA
 
-linkFn :: (a -> b) -> Topic IO a -> Topic IO b
+linkFn :: (a -> b) -> Topic U.TIO a -> Topic U.TIO b
 {-# INLINE linkFn #-}
 linkFn = fmap
 
-linkTA :: TopicArrow IO a b -> TopicArrow IO () a -> TopicArrow IO () b
+linkTA :: TopicArrow U.TIO a b -> TopicArrow U.TIO () a -> TopicArrow U.TIO () b
 {-# INLINE linkTA #-}
 linkTA = (<<<)
 
@@ -148,7 +149,7 @@ unfold f = TopicArrow . const . T.unfold f
 -- |@Ros.Topic.Util@ operations wrappers
 --
 
-toList :: TopicArrow IO () a -> IO [a]
+toList :: TopicArrow U.TIO () a -> U.TIO [a]
 {-# INLINE toList #-}
 toList = U.toList . flip runTopicArrow (T.repeatM (return ()))
 

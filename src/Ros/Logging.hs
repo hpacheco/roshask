@@ -5,6 +5,7 @@
 module Ros.Logging (Log, LogLevel(..), enableLogging,
                     logDebug, logWarn, logInfo, logError, logFatal) where
 import Control.Concurrent.Chan
+import Control.Concurrent (ThreadId)
 import Control.Monad (when)
 import Data.IORef
 import Data.Word (Word8)
@@ -15,7 +16,7 @@ import Ros.Internal.Log (Log(Log))
 import qualified Ros.Internal.Log as Log
 import Ros.Internal.Header
 import Ros.Node
-import Ros.Topic.Util (fromList)
+import Ros.Topic.Util (TIO,fromList)
 
 emptyHeader :: Header
 emptyHeader = Header 0 (0,0) ""
@@ -83,4 +84,4 @@ enableLogging ll = do xs <- liftIO $ getChanContents rosOutChan
                                      (writeIORef showLevel . printLog)
                                      ll
                       liftIO . writeIORef nodeName =<< getName
-                      advertise "/rosout" (fromList xs :: Topic IO Log)
+                      advertise "/rosout" (fromList xs :: Topic TIO Log)

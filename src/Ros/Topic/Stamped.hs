@@ -13,12 +13,15 @@
 -- rate), and another 'Topic' that imposes a rate limit.
 module Ros.Topic.Stamped (everyNew, interpolate, batch) where
 import Data.Time.Clock (getCurrentTime, diffUTCTime)
-import System.Timeout
+import Control.Timeout
+import Data.Time.Units
 import qualified Ros.Topic as T
 import Ros.Topic (Topic(..), metamorphM, yieldM)
 import qualified Ros.Topic.Util as T
+import Ros.Topic.Util (TIO(..))
 import Ros.Internal.Msg.HeaderSupport
 import Ros.Internal.RosTime
+import Control.Monad.IO.Class
 
 -- |Given two consecutive values, pick the one with the closest time
 -- stamp to another value.
@@ -38,7 +41,7 @@ pickNearest x1 x2 y
 -- consecutive elements from @t1@ that brackets it in time, and the 
 -- time interval in seconds covered by that bracket.
 findBrackets :: (HasHeader a, HasHeader b) =>
-                Topic IO a -> Topic IO b -> Topic IO ((a,a,Double), b)
+                Topic TIO a -> Topic TIO b -> Topic TIO ((a,a,Double), b)
 findBrackets t1 t2 = T.concats . metamorphM (go t2) $ T.consecutive t1
   where go t (x,y) = let start = getStamp x
                          stop = getStamp y
@@ -65,7 +68,7 @@ removeDups = T.catMaybes . fmap check . T.consecutive
 -- 'Topic' with the nearest time stamp. The resulting 'Topic' will
 -- produce a new value at the rate of the faster component 'Topic'.
 everyNew :: (HasHeader a, HasHeader b) => 
-            Topic IO a -> Topic IO b -> IO (Topic IO (a,b))
+            Topic TIO a -> Topic TIO b -> TIO (Topic TIO (a,b))
 everyNew t1 t2 = 
   do (t1a, t1b) <- T.tee t1
      (t2a, t2b) <- T.tee t2
@@ -82,8 +85,8 @@ everyNew t1 t2 =
 -- and the linear ratio to find between them. This ratio is determined
 -- by the time stamp of the intervening element of @t2@.
 interpolate :: (HasHeader a, HasHeader b) => 
-               (a -> a -> Double -> a) -> Topic IO a -> Topic IO b -> 
-               Topic IO (a,b)
+               (a -> a -> Double -> a) -> Topic TIO a -> Topic TIO b -> 
+               Topic TIO (a,b)
 interpolate f t1 t2 = interp `fmap` findBrackets t1 t2
   where interp ((x1,x2,dt),y) = let tx1 = getStamp x1
                                     ty = getStamp y
@@ -98,17 +101,17 @@ interpolate f t1 t2 = interp `fmap` findBrackets t1 t2
 -- times rather than time stamps. This is what lets us close the
 -- window, rather than having to admit any message that ever arrives
 -- with a compatible time stamp.
-batch :: Double -> Topic IO a -> Topic IO [a]
+batch :: Double -> Topic TIO a -> Topic TIO [a]
 batch timeWindow t0 = 
   Topic $ do (x,t') <- runTopic t0
-             start <- getCurrentTime
-             let go acc t = do now <- getCurrentTime
+             start <- liftIO getCurrentTime
+             let go acc t = do now <- liftIO getCurrentTime
                                let dt = fromRational . toRational $
                                         diffUTCTime now start
                                    dMs = floor $ (timeWindow - dt) * 1000000
                                if dMs == 0
                                  then return (reverse acc, k t)
-                                 else do r <- timeout dMs $ runTopic t
+                                 else do r <- timeout (fromMicroseconds dMs :: Microsecond) $ runTopic t
                                          case r of
                                            Just (x',t'') -> go (x':acc) t''
                                            Nothing -> return (reverse acc, k t)

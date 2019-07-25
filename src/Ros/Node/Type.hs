@@ -2,9 +2,10 @@
              ExistentialQuantification, GeneralizedNewtypeDeriving #-}
 module Ros.Node.Type where
 import Control.Applicative (Applicative(..), (<$>))
-import Control.Concurrent (MVar, putMVar,readMVar)
-import Control.Concurrent.STM (atomically, TVar, readTVar, writeTVar)
+import Control.Concurrent (MVar, putMVar,readMVar,killThread)
+import Control.Concurrent.STM (atomically, TVar, readTVar, writeTVar,modifyTVar)
 import Control.Concurrent.BoundedChan
+import Control.Concurrent.Hierarchy
 import Control.Monad.State
 import Control.Monad.Reader
 import Data.Dynamic
@@ -20,6 +21,7 @@ import Ros.Internal.Util.ArgRemapping (ParamVal)
 import Ros.Internal.Util.AppConfig (ConfigOptions)
 import Ros.Graph.Slave (RosSlave(..))
 import Ros.Topic (Topic)
+import Ros.Topic.Util (TIO)
 import Ros.Topic.Stats
 
 data Subscription = Subscription { knownPubs :: TVar (Set URI)
@@ -27,12 +29,13 @@ data Subscription = Subscription { knownPubs :: TVar (Set URI)
                                  , subType   :: String
                                  , subChan   :: DynBoundedChan
                                  , subTopic  :: DynTopic
-                                 , subStats  :: StatMap SubStats }
+                                 , subStats  :: StatMap SubStats
+                                 , subCleanup :: TVar (IO ()) }
 
 data DynTopic where
-  DynTopic :: Typeable a => Topic IO a -> DynTopic
+  DynTopic :: Typeable a => Topic TIO a -> DynTopic
 
-fromDynTopic :: Typeable a => DynTopic -> Maybe (Topic IO a)
+fromDynTopic :: Typeable a => DynTopic -> Maybe (Topic TIO a)
 fromDynTopic (DynTopic t) = gcast t
 
 data DynBoundedChan where
@@ -44,10 +47,10 @@ fromDynBoundedChan (DynBoundedChan t) = gcast t
 data Publication = Publication { subscribers :: TVar (Set URI)
                                , pubType     :: String
                                , pubPort     :: Int
-                               , pubCleanup  :: IO ()
                                , pubChan     :: DynBoundedChan
                                , pubTopic    :: DynTopic
-                               , pubStats    :: StatMap PubStats }
+                               , pubStats    :: StatMap PubStats
+                               , pubCleanup  :: TVar (IO ()) }
 
 data NodeState = NodeState { nodeName       :: String
                            , namespace      :: String
@@ -55,7 +58,11 @@ data NodeState = NodeState { nodeName       :: String
                            , nodeURI        :: MVar URI
                            , signalShutdown :: MVar (IO ())
                            , subscriptions  :: Map String Subscription
-                           , publications   :: Map String Publication }
+                           , publications   :: Map String Publication
+                           , threads        :: ThreadMap
+                           , nodeCleanup    :: TVar (IO ()) }
+
+
 
 type Params = [(String, ParamVal)]
 type Remap = [(String,String)]
@@ -97,27 +104,35 @@ instance RosSlave NodeState where
                                             return (name, topicType, stats')
     --hpacheco: ignore publishers from the same node
     publisherUpdate ns name uris = 
-        let act = readMVar (nodeURI ns) >>= \nodeuri -> join.atomically $
-                  case M.lookup name (subscriptions ns) of
-                    Nothing -> return (return ())
-                    Just sub -> do let add = addPub sub >=> \_ -> return ()
-                                   known <- readTVar (knownPubs sub) 
-                                   (act',known') <- foldM (connectToPub add)
-                                                          (return (), known)
-                                                          (List.delete nodeuri uris)
-                                   writeTVar (knownPubs sub) known'
-                                   return act'
+        let act = readMVar (nodeURI ns) >>= \nodeuri -> do
+                cleans <- join.atomically $
+                      case M.lookup name (subscriptions ns) of
+                        Nothing -> return (return [])
+                        Just sub -> do
+                            let add = addPub sub >=> \t -> return [(t,subCleanup sub)]
+                            known <- readTVar (knownPubs sub) 
+                            (act',known') <- foldM (connectToPub add)
+                                (return [], known)
+                                (List.delete nodeuri uris)
+                            writeTVar (knownPubs sub) known'
+                            return act'
+                forM_ cleans $ \(t,clean) -> atomically $ modifyTVar clean (>> killThread t)
         in act
     getTopicPortTCP = ((pubPort <$> ) .) . flip M.lookup . publications
     setShutdownAction ns a = putMVar (signalShutdown ns) a
-    stopNode = mapM_ (pubCleanup . snd) . M.toList . publications
+    stopNode st = do
+        clean <- atomically $ readTVar $ nodeCleanup st
+        clean
+        killThreadHierarchy $ threads st
+        mapM_ (atomically . readTVar . subCleanup . snd) $ M.toList $ subscriptions st
+        mapM_ (atomically . readTVar . pubCleanup . snd) $ M.toList $ publications st
 
 -- If a given URI is not a part of a Set of known URIs, add an action
 -- to effect a subscription to an accumulated action and add the URI
 -- to the Set.
 connectToPub :: Monad m => 
-                (URI -> IO ()) -> (IO (), Set URI) -> URI -> m (IO (), Set URI)
+                (URI -> IO [a]) -> (IO [a], Set URI) -> URI -> m (IO [a], Set URI)
 connectToPub doSub (act, known) uri = if S.member uri known
                                       then return (act, known)
                                       else let known' = S.insert uri known
-                                           in return (doSub uri >> act, known')
+                                           in return (doSub uri >>= \t1 -> act >>= \t2 -> return (t1++t2), known')
