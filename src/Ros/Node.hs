@@ -265,7 +265,6 @@ runNode name (Node nConf) =
                       Just n -> putMVar myURI $! "http://"++n
          Just ip -> putMVar myURI $! "http://"++ip
        let configuredNode = runReaderT nConf (NodeConfig params' nameMap' conf)
-           initialState = NodeState name' namespaceConf masterConf myURI
-                                    sigStop M.empty M.empty
+           initialState = NodeState name' namespaceConf masterConf myURI sigStop M.empty M.empty
            statefulNode = execStateT configuredNode initialState
        statefulNode >>= flip runReaderT conf . RN.runNode name'
