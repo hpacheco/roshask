@@ -176,6 +176,7 @@ subscribe_ name =
              --  then return . fromDynErr . pubTopic $ pubs M.! name'
              (stream,sub) <- liftIO $ runReaderT (mkSub name') (r,ts)
              put n { subscriptions = M.insert name' sub subs }
+             RN.registerSubscriptionNode name' sub
              return stream
 --  where fromDynErr = maybe (error msg) id . fromDynTopic
 --        msg = "Subscription to "++name++" at a different type than "++
@@ -199,7 +200,7 @@ advertiseAux mkPub' bufferSize name =
        let mbpub = M.lookup name' pubs 
        (pub') <- liftIO $ runReaderT (mkPub' mbpub bufferSize) (r,ts)
        put n { publications = M.insert name' pub' pubs }
-       return ()
+       RN.registerPublicationNode name' pub'
 
 -- |Advertise a 'Topic' publishing a stream of 'IO' values with a
 -- per-client transmit buffer of the specified size.
@@ -311,11 +312,6 @@ runNode name (Node nConf) =
                       Just n -> putMVar myURI $! "http://"++n
          Just ip -> putMVar myURI $! "http://"++ip
        let configuredNode = runReaderT nConf (NodeConfig params' nameMap' conf)
-<<<<<<< Updated upstream
-           initialState = NodeState name' namespaceConf masterConf myURI sigStop M.empty M.empty
-=======
-           initialState = NodeState name' namespaceConf masterConf myURI
-                                    sigStop M.empty M.empty newts clean
->>>>>>> Stashed changes
+           initialState = NodeState name' namespaceConf masterConf myURI sigStop M.empty M.empty newts clean
            statefulNode = execStateT configuredNode initialState
        statefulNode >>= flip runReaderT (conf,newts) . RN.runNode name'

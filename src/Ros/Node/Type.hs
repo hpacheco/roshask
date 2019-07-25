@@ -16,7 +16,7 @@ import qualified Data.Set as S
 import qualified Data.List as List
 import Control.Concurrent (ThreadId)
 import Control.Concurrent.Chan
-import Ros.Internal.RosTypes (URI)
+import Ros.Internal.RosTypes (URI,TopicType(..),TopicName)
 import Ros.Internal.Util.ArgRemapping (ParamVal)
 import Ros.Internal.Util.AppConfig (ConfigOptions)
 import Ros.Graph.Slave (RosSlave(..))
@@ -126,6 +126,24 @@ instance RosSlave NodeState where
         killThreadHierarchy $ threads st
         mapM_ (atomically . readTVar . subCleanup . snd) $ M.toList $ subscriptions st
         mapM_ (atomically . readTVar . pubCleanup . snd) $ M.toList $ publications st
+
+formatSubscription :: NodeState -> TopicName -> Subscription -> IO (TopicType, [(URI, SubStats)])
+formatSubscription st name sub = atomically $ formatSub (name,sub)
+        where formatSub (name, sub) = let topicType = subType sub
+                                      in do stats <- readTVar (subStats sub)
+                                            stats' <- mapM statSnapshot . 
+                                                      M.toList $
+                                                      stats
+                                            return (topicType, stats')
+
+formatPublication :: NodeState -> TopicName -> Publication -> IO (TopicType, [(URI, PubStats)])
+formatPublication st name pub = atomically $ formatPub (name,pub)
+        where formatPub (name, pub) = let topicType = pubType pub
+                                      in do stats <- readTVar (pubStats pub)
+                                            stats' <- mapM statSnapshot .
+                                                      M.toList $
+                                                      stats
+                                            return (topicType, stats')
 
 -- If a given URI is not a part of a Set of known URIs, add an action
 -- to effect a subscription to an accumulated action and add the URI
