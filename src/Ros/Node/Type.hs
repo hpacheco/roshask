@@ -19,11 +19,15 @@ import Control.Concurrent.Chan
 import Ros.Internal.RosTypes (URI,TopicType(..),TopicName)
 import Ros.Internal.Util.ArgRemapping (ParamVal)
 import Ros.Internal.Util.AppConfig (ConfigOptions)
-import Ros.Graph.Slave (RosSlave(..))
 import Ros.Topic (Topic)
 import Ros.Topic.Util (TIO)
 import Ros.Topic.Stats
 import Data.Typeable
+
+#if defined(ghcjs_HOST_OS)
+#else
+import Ros.Graph.Slave (RosSlave(..))
+#endif
 
 data Subscription = Subscription { knownPubs :: TVar (Set URI)
                                  , addPub    :: URI -> IO ThreadId

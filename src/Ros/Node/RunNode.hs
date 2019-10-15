@@ -12,7 +12,6 @@ import Control.Monad.IO.Class
 import System.Posix.Signals (installHandler, Handler(..), sigINT)
 import Ros.Internal.RosTypes
 import Ros.Internal.Util.AppConfig (Config, debug)
-import Ros.Graph.Slave
 import Ros.Internal.Util.AppConfig
 import Ros.Node.Type
 import Ros.Topic (Topic,runTopic)
@@ -28,6 +27,7 @@ import GHC.Conc
 #if defined(ghcjs_HOST_OS)
 #else
 import Ros.Graph.Master
+import Ros.Graph.Slave
 #endif
 
 -- Inform the master that we are publishing a particular topic.
