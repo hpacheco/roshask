@@ -11,6 +11,7 @@
 module Ros.Topic.Arrow where
 
 import Control.Concurrent (ThreadId)
+import Control.Monad.Fail
 import Ros.Internal.RosBinary (RosBinary)
 import Ros.Internal.Msg.MsgInfo (MsgInfo)
 import Ros.Node (Node, Topic, TopicName, Subscribe, Advertise,
@@ -195,7 +196,7 @@ weightedMeanNormalized :: Monad m =>
 weightedMeanNormalized alpha invAlpha plus scale normalize =
   TopicArrow $ U.weightedMeanNormalized alpha invAlpha plus scale normalize
 
-simpsonsRule :: (Monad m, Fractional n) =>
+simpsonsRule :: (MonadFail m, Fractional n) =>
                 (a -> a -> a) -> (n -> a -> a) -> TopicArrow m a a
 {-# INLINE simpsonsRule #-}
 simpsonsRule plus scale = TopicArrow $ U.simpsonsRule plus scale

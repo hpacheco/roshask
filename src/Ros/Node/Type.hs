@@ -23,6 +23,7 @@ import Ros.Graph.Slave (RosSlave(..))
 import Ros.Topic (Topic)
 import Ros.Topic.Util (TIO)
 import Ros.Topic.Stats
+import Data.Typeable
 
 data Subscription = Subscription { knownPubs :: TVar (Set URI)
                                  , addPub    :: URI -> IO ThreadId
@@ -154,3 +155,8 @@ connectToPub doSub (act, known) uri = if S.member uri known
                                       then return (act, known)
                                       else let known' = S.insert uri known
                                            in return (doSub uri >>= \t1 -> act >>= \t2 -> return (t1++t2), known')
+
+addCleanup :: IO () -> Node ()
+addCleanup m = do
+    c <- gets nodeCleanup
+    liftIO $ atomically $ modifyTVar c (>> m)

@@ -1,6 +1,7 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 
 module Ros.Node.RunNode (runNode,registerPublicationNode,registerSubscriptionNode) where
+
 import Control.Concurrent (readMVar, killThread)
 import qualified Control.Concurrent.SSem as Sem
 import qualified Control.Exception as E
@@ -48,23 +49,24 @@ registerSubscription name n master uri (tname, ttype, _) = orErrorConfig_ "Warni
        return ()
 
 -- Redirect local publishers to local subscribers
-registerLocalSubscription :: (String,(Publication,Subscription)) -> Config ()
+registerLocalSubscription :: (String,(Publication,Subscription)) -> Node ()
 registerLocalSubscription (topicname,(pub,sub)) = do
-    redirectChan (pubTopic pub) (subChan sub)
+    mbt <- configNode $ redirectChan (pubTopic pub) (subChan sub)
+    mapM_ (addCleanup  . killThread) mbt
   where
-    redirectChan :: DynTopic -> DynBoundedChan -> Config ()
+    redirectChan :: DynTopic -> DynBoundedChan -> Config (Maybe ThreadId)
     redirectChan (DynTopic from) (DynBoundedChan (to::BoundedChan b)) = 
         case gcast from of
             Nothing -> do
                 debug $ "Warning: Topic " ++ topicname ++ "published with type " ++ show (typeOf from) ++ " but subscribed with type " ++ show (typeOf to)
-                return ()
+                return (Nothing)
             Just (from'::Topic TIO b) -> do
                 --liftIO $ putStrLn $ "redirecting " ++ topicname
                 let go t = do { (x,t') <- runTopic t; liftIO (writeChan to x); go t' }
-                _ <- forkConfig $ do
+                t <- forkConfigUnsafe $ do
                     (_,ts) <- ask
                     liftIO $ runReaderT (go from') ts
-                return ()
+                return (Just t)
 
 --registerNode :: String -> NodeState -> Config ()
 --registerNode name n = 
@@ -96,7 +98,7 @@ registerSubscriptionNode name sub = do
     configNode $ registerSubscription nodename n master uri (name,typ,stats)
     case Map.lookup name (publications n) of
         Nothing -> return ()
-        Just pub -> configNode $ registerLocalSubscription (name,(pub,sub))
+        Just pub -> registerLocalSubscription (name,(pub,sub))
 
 registerPublicationNode :: TopicName -> Publication -> Node ()
 registerPublicationNode name pub = do
@@ -108,13 +110,14 @@ registerPublicationNode name pub = do
     configNode $ registerPublication nodename n master uri (name,typ,stats)
     case Map.lookup name (subscriptions n) of
         Nothing -> return ()
-        Just sub -> configNode $ registerLocalSubscription (name,(pub,sub))
+        Just sub -> registerLocalSubscription (name,(pub,sub))
 
 -- |Run a ROS Node with the given name. Returns when the Node has
 -- shutdown either by receiving an interrupt signal (e.g. Ctrl-C) or
 -- because the master told it to stop.
-runNode :: String -> NodeState -> Config ()
-runNode name s = do (wait, _port) <- liftIO $ runSlave s
+
+runNode :: String -> IO () -> Int -> NodeState -> Config ()
+runNode name wait _port s = do --(wait, _port) <- liftIO $ runSlave s
                     --registerNode name s
                     debug "Spinning"
                     allDone <- liftIO $ Sem.new 0

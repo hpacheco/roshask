@@ -93,12 +93,18 @@ Library
                        Ros.Node.RosTcp
     Build-depends:     template-haskell
 
+  if impl(ghcjs)
+    Build-depends:
+                       
+  else
+    Build-depends:     network >= 2.6
+
   -- Packages needed in order to build this package.
   Build-depends:       base >= 4.5 && < 6, time-out, time-units,
                        binary >= 0.7.2.1,
                        bytestring,
+                       fail,
                        containers,
-                       network >= 2.3,
                        Cabal >= 1.20,
                        stm >= 2.1.2, thread-hierarchy,
                        mtl >= 2.2.1,

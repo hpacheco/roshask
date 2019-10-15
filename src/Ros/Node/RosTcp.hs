@@ -302,8 +302,9 @@ runServerAux :: (Socket -> IO ()) ->
 runServerAux negotiate pubAction _updateStats bufferSize = 
     do r <- ask
        liftIO . withSocketsDo $ runReaderT go r
-  where go = do sock <- liftIO $ socket AF_INET Sock.Stream defaultProtocol
-                liftIO $ bindSocket sock (SockAddrInet aNY_PORT iNADDR_ANY)
+  where go = do 
+                sock <- liftIO $ socket AF_INET Sock.Stream defaultProtocol
+                liftIO $ bind sock (SockAddrInet defaultPort $ tupleToHostAddress (0,0,0,0))
                 port <- liftIO (fromInteger . toInteger <$> socketPort sock)
                 liftIO $ listen sock 5
                 clients <- liftIO $ newTVarIO []

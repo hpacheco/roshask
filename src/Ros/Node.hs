@@ -39,6 +39,8 @@ import Ros.Topic
 import Ros.Topic.Stats (recvMessageStat, sendMessageStat)
 import Ros.Topic.Util (configTIO,TIO,share,shareUnsafe)
 
+import qualified Ros.Graph.Slave as Slave
+
 import qualified Control.Monad.Except as E
 import qualified Control.Exception as E
 
@@ -72,6 +74,9 @@ class Subscribe s where
     subscribe :: (RosBinary a, MsgInfo a, Typeable a)
               => TopicName -> Node (s a)
 
+instance Subscribe (Topic TIO) where
+    subscribe = subscribe_
+
 type Cleanup = IO ()
 
 -- |ROS topic publisher
@@ -85,9 +90,6 @@ class Advertise a where
     advertise :: (RosBinary b, MsgInfo b, Typeable b)
               => TopicName -> a b -> Node ()
     advertise = advertiseBuffered 1
-
-instance Subscribe (Topic TIO) where
-    subscribe = subscribe_
 
 instance Advertise (Topic TIO) where
     advertiseBuffered = advertiseBuffered_
@@ -270,11 +272,6 @@ getName = nodeName <$> get
 getNamespace :: Node String
 getNamespace = namespace <$> get
 
-addCleanup :: IO () -> Node ()
-addCleanup m = do
-    c <- gets nodeCleanup
-    liftIO $ atomically $ modifyTVar c (>> m)
-
 -- |Run a ROS Node.
 runNode :: NodeName -> Node a -> IO ()
 runNode name (Node nConf) =
@@ -314,4 +311,5 @@ runNode name (Node nConf) =
        let configuredNode = runReaderT nConf (NodeConfig params' nameMap' conf)
            initialState = NodeState name' namespaceConf masterConf myURI sigStop M.empty M.empty newts clean
            statefulNode = execStateT configuredNode initialState
-       statefulNode >>= flip runReaderT (conf,newts) . RN.runNode name'
+       (wait,_port) <- liftIO $ Slave.runSlave initialState
+       statefulNode >>= flip runReaderT (conf,newts) . RN.runNode name' wait _port
