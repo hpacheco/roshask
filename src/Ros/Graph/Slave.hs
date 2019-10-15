@@ -10,18 +10,6 @@ import qualified Control.Monad.Except as E
 import Control.Monad.IO.Class (liftIO)
 import qualified Data.ByteString.UTF8 ()
 import qualified Data.ByteString.Lazy.UTF8 as BLU
-import Snap.Http.Server (simpleHttpServe)
-import Snap.Http.Server.Config (defaultConfig, setPort, Config, ConfigLog(..),
-                                setVerbose, setAccessLog, setErrorLog)
--- import Snap.Types (Snap, getRequestBody, writeLBS, 
---                    getResponse, putResponse, setContentLength)
-import Snap.Core (Snap, readRequestBody, writeLBS, getResponse, putResponse, 
-                  setContentLength)
-import Network.Socket hiding (Stream)
-import qualified Network.Socket as Net
-import Network.XmlRpc.Internals (Value)
-import Network.XmlRpc.Server (handleCall, methods, fun)
-import Network.XmlRpc.Client (remote)
 #ifndef mingw32_HOST_OS
 import System.Posix.Process (getProcessID)
 #endif
@@ -34,24 +22,41 @@ import Ros.Topic.Stats (PubStats(PubStats), SubStats(SubStats))
 #if defined(ghcjs_HOST_OS)
 #else
 import Ros.Graph.Master
+import Snap.Http.Server (simpleHttpServe)
+import Snap.Http.Server.Config (defaultConfig, setPort, Config, ConfigLog(..),
+                                setVerbose, setAccessLog, setErrorLog)
+-- import Snap.Types (Snap, getRequestBody, writeLBS, 
+--                    getResponse, putResponse, setContentLength)
+import Snap.Core (Snap, readRequestBody, writeLBS, getResponse, putResponse, 
+                  setContentLength)
+import Network.Socket hiding (Stream)
+import qualified Network.Socket as Net
+import Network.XmlRpc.Internals (Value)
+import Network.XmlRpc.Server (handleCall, methods, fun)
+import Network.XmlRpc.Client (remote)
 #endif
 
 class RosSlave a where
-    getMaster :: a -> URI
     getNodeName :: a -> String
+    setShutdownAction :: a -> IO () -> IO ()
+#if defined(ghcjs_HOST_OS)
+#else
+    getMaster :: a -> URI
     getNodeURI :: a -> MVar URI
     getSubscriptions :: a -> IO [(TopicName, TopicType, [(URI, SubStats)])]
     getPublications :: a -> IO [(TopicName, TopicType, [(URI, PubStats)])]
     publisherUpdate :: a -> TopicName -> [URI] -> IO ()
     getTopicPortTCP :: a -> TopicName -> Maybe Int
-    setShutdownAction :: a -> IO () -> IO ()
     stopNode :: a -> IO ()
+#endif
 
 #ifdef mingw32_HOST_OS
 getProcessID :: IO Int
 getProcessID = return 42
 #endif
 
+#if defined(ghcjs_HOST_OS)
+#else
 -- |Unregister all of a node's publishers and subscribers, then stop
 -- the node's servers.
 cleanupNode :: RosSlave n => n -> IO ()
@@ -212,3 +217,4 @@ runSlave n = do quitNow <- Sem.new 0
                      writeLBS response
                      let len = fromIntegral $ BLU.length response
                      putResponse . setContentLength len =<< getResponse
+#endif

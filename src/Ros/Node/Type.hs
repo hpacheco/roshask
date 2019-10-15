@@ -23,11 +23,7 @@ import Ros.Topic (Topic)
 import Ros.Topic.Util (TIO)
 import Ros.Topic.Stats
 import Data.Typeable
-
-#if defined(ghcjs_HOST_OS)
-#else
 import Ros.Graph.Slave (RosSlave(..))
-#endif
 
 data Subscription = Subscription { subType   :: String
                                  , subChan   :: DynBoundedChan
@@ -100,11 +96,12 @@ instance MonadReader NodeConfig Node where
     ask = Node ask
     local f m = Node $ withReaderT f (unNode m)
 
+instance RosSlave NodeState where
+    getNodeName = nodeName
+    setShutdownAction ns a = putMVar (signalShutdown ns) a
 #if defined(ghcjs_HOST_OS)
 #else
-instance RosSlave NodeState where
     getMaster = master
-    getNodeName = nodeName
     getNodeURI = nodeURI
     getSubscriptions = atomically . mapM formatSub . M.toList . subscriptions
         where formatSub (name, sub) = let topicType = subType sub
@@ -137,13 +134,13 @@ instance RosSlave NodeState where
                 forM_ cleans $ \(t,clean) -> atomically $ modifyTVar clean (>> killThread t)
         in act
     getTopicPortTCP = ((pubPort <$> ) .) . flip M.lookup . publications
-    setShutdownAction ns a = putMVar (signalShutdown ns) a
     stopNode st = do
         clean <- atomically $ readTVar $ nodeCleanup st
         clean
         killThreadHierarchy $ threads st
         mapM_ (atomically . readTVar . subCleanup . snd) $ M.toList $ subscriptions st
         mapM_ (atomically . readTVar . pubCleanup . snd) $ M.toList $ publications st
+#endif
 
 formatSubscription :: NodeState -> TopicName -> Subscription -> IO (TopicType, [(URI, SubStats)])
 formatSubscription st name sub = atomically $ formatSub (name,sub)
