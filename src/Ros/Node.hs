@@ -39,9 +39,10 @@ import Ros.Topic.Util (configTIO,TIO,share,shareUnsafe)
 import qualified Control.Monad.Except as E
 import qualified Control.Exception as E
 
+import qualified Ros.Graph.Slave as Slave
+
 #if defined(ghcjs_HOST_OS)
 #else
-import qualified Ros.Graph.Slave as Slave
 import qualified Ros.Graph.ParameterServer as P
 import Ros.Node.RosTcp (subStream, runServer)
 import Network.XmlRpc.Internals (XmlRpcType)
