@@ -22,7 +22,6 @@ import qualified Data.Set as S
 import Control.Concurrent (ThreadId)
 import Data.Dynamic
 import System.Environment (getEnvironment, getArgs)
-import Network.XmlRpc.Internals (XmlRpcType)
 import qualified Data.Map as Map
 
 import Ros.Internal.Msg.MsgInfo
@@ -37,15 +36,15 @@ import Ros.Topic
 import Ros.Topic.Stats (recvMessageStat, sendMessageStat)
 import Ros.Topic.Util (configTIO,TIO,share,shareUnsafe)
 
-import qualified Ros.Graph.Slave as Slave
-
 import qualified Control.Monad.Except as E
 import qualified Control.Exception as E
 
 #if defined(ghcjs_HOST_OS)
 #else
+import qualified Ros.Graph.Slave as Slave
 import qualified Ros.Graph.ParameterServer as P
 import Ros.Node.RosTcp (subStream, runServer)
+import Network.XmlRpc.Internals (XmlRpcType)
 #endif    
 
 getThreads :: Node ThreadMap
