@@ -87,7 +87,7 @@ Library
     Exposed-modules:   Ros.Logging
     Other-modules:     Ros.Internal.Log
                        Ros.Internal.Header
-                       Ros.Node.RosTcp
+--                       Ros.Node.RosTcp
     Build-depends:     template-haskell
 
   if impl(ghcjs)

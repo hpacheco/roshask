@@ -32,7 +32,6 @@ import Ros.Internal.RosTime
 import Ros.Internal.Util.AppConfig (Config, parseAppConfig, forkConfig, forkConfigUnsafe,configured)
 import Ros.Internal.Util.ArgRemapping
 import Ros.Node.Type
-import Ros.Node.RosTcp (subStream, runServer)
 import qualified Ros.Node.RunNode as RN
 import Ros.Topic
 import Ros.Topic.Stats (recvMessageStat, sendMessageStat)
@@ -46,6 +45,7 @@ import qualified Control.Exception as E
 #if defined(ghcjs_HOST_OS)
 #else
 import qualified Ros.Graph.ParameterServer as P
+import Ros.Node.RosTcp (subStream, runServer)
 #endif    
 
 getThreads :: Node ThreadMap
