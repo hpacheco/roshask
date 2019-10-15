@@ -29,8 +29,12 @@ import Data.Typeable
 import Ros.Graph.Slave (RosSlave(..))
 #endif
 
-data Subscription = Subscription { knownPubs :: TVar (Set URI)
+data Subscription = Subscription {
+#if defined(ghcjs_HOST_OS)
+#else
+                                   knownPubs :: TVar (Set URI)
                                  , addPub    :: URI -> IO ThreadId
+#endif
                                  , subType   :: String
                                  , subChan   :: DynBoundedChan
                                  , subTopic  :: DynTopic
@@ -49,9 +53,13 @@ data DynBoundedChan where
 fromDynBoundedChan :: Typeable a => DynBoundedChan -> Maybe (BoundedChan a)
 fromDynBoundedChan (DynBoundedChan t) = gcast t
 
-data Publication = Publication { subscribers :: TVar (Set URI)
-                               , pubType     :: String
+data Publication = Publication {
+#if defined(ghcjs_HOST_OS)
+#else
+                                 subscribers :: TVar (Set URI)
                                , pubPort     :: Int
+#endif
+                               , pubType     :: String
                                , pubChan     :: DynBoundedChan
                                , pubTopic    :: DynTopic
                                , pubStats    :: StatMap PubStats
@@ -59,8 +67,11 @@ data Publication = Publication { subscribers :: TVar (Set URI)
 
 data NodeState = NodeState { nodeName       :: String
                            , namespace      :: String
+#if defined(ghcjs_HOST_OS)
+#else
                            , master         :: URI
                            , nodeURI        :: MVar URI
+#endif
                            , signalShutdown :: MVar (IO ())
                            , subscriptions  :: Map String Subscription
                            , publications   :: Map String Publication
@@ -89,6 +100,8 @@ instance MonadReader NodeConfig Node where
     ask = Node ask
     local f m = Node $ withReaderT f (unNode m)
 
+#if defined(ghcjs_HOST_OS)
+#else
 instance RosSlave NodeState where
     getMaster = master
     getNodeName = nodeName
@@ -149,6 +162,7 @@ formatPublication st name pub = atomically $ formatPub (name,pub)
                                                       M.toList $
                                                       stats
                                             return (topicType, stats')
+#endif
 
 -- If a given URI is not a part of a Set of known URIs, add an action
 -- to effect a subscription to an accumulated action and add the URI
