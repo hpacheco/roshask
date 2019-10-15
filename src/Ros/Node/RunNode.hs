@@ -1,4 +1,4 @@
-{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE CPP, ScopedTypeVariables #-}
 
 module Ros.Node.RunNode (runNode,registerPublicationNode,registerSubscriptionNode) where
 
