@@ -1,4 +1,4 @@
-{-# LANGUAGE FlexibleInstances, ScopedTypeVariables, ExistentialQuantification #-}
+{-# LANGUAGE CPP, FlexibleInstances, ScopedTypeVariables, ExistentialQuantification #-}
 -- |The primary entrypoint to the ROS client library portion of
 -- roshask. This module defines the actions used to configure a ROS
 -- Node.
@@ -32,7 +32,6 @@ import Ros.Internal.RosTime
 import Ros.Internal.Util.AppConfig (Config, parseAppConfig, forkConfig, forkConfigUnsafe,configured)
 import Ros.Internal.Util.ArgRemapping
 import Ros.Node.Type
-import qualified Ros.Graph.ParameterServer as P
 import Ros.Node.RosTcp (subStream, runServer)
 import qualified Ros.Node.RunNode as RN
 import Ros.Topic
@@ -43,6 +42,11 @@ import qualified Ros.Graph.Slave as Slave
 
 import qualified Control.Monad.Except as E
 import qualified Control.Exception as E
+
+#if defined(ghcjs_HOST_OS)
+import qualified Ros.Graph.ParameterServer as P
+#else
+#endif    
 
 getThreads :: Node ThreadMap
 getThreads = gets threads
