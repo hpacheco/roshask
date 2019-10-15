@@ -2,9 +2,10 @@
 -- |The primary entrypoint to the ROS client library portion of
 -- roshask. This module defines the actions used to configure a ROS
 -- Node.
-module Ros.Node (getThreads,addCleanup,forkNode,nodeTIO,Node, runNode, Subscribe, Advertise,
-                 getShutdownAction, runHandler, getParam,
-                 getParamOpt, getName, getNamespace,
+module Ros.Node  (getThreads,addCleanup,forkNode,nodeTIO,Node, runNode, Subscribe, Advertise,
+                 getShutdownAction, runHandler,
+--                 getParam, getParamOpt,
+                 getName, getNamespace,
                  subscribe, advertise, advertiseBuffered,
                  module Ros.Internal.RosTypes, Topic(..),
                  module Ros.Internal.RosTime, liftIO) where
@@ -39,14 +40,18 @@ import Ros.Topic.Util (configTIO,TIO,share,shareUnsafe)
 import qualified Control.Monad.Except as E
 import qualified Control.Exception as E
 
-import qualified Ros.Graph.Slave as Slave
-
 #if defined(ghcjs_HOST_OS)
 #else
 import qualified Ros.Graph.ParameterServer as P
+import qualified Ros.Graph.Slave as Slave
 import Ros.Node.RosTcp (subStream, runServer)
 import Network.XmlRpc.Internals (XmlRpcType)
 #endif    
+
+#if defined(ghcjs_HOST_OS)
+runServer _ _ _ = return (return (),0)
+#else
+#endif
 
 getThreads :: Node ThreadMap
 getThreads = gets threads
@@ -106,11 +111,15 @@ recvBufferSize = 10
 -- Chan.
 addSource :: (RosBinary a, MsgInfo a) =>
              String -> (URI -> Int -> IO ()) -> BoundedChan a -> URI ->
-             Config ThreadId
-addSource tname updateStats c uri =
+             Config (ThreadId)
+#if defined(ghcjs_HOST_OS)
+addSource tname updateStats c uri = return (error "nothread")
+#else
+addSource tname updateStats c uri = 
     forkConfigUnsafe $ do
         t <- subStream uri tname (updateStats uri)
         configTIO $ forever $ join $ fmap (liftIO . writeChan c) t
+#endif
 
 -- Create a new Subscription value that will act as a named input
 -- channel with zero or more connected publishers.
@@ -240,6 +249,9 @@ canonicalizeName ('~':n) = do state <- get
                               return $ node ++ "/" ++ n
 canonicalizeName n = do (++n) . namespace <$> get
 
+
+#if defined(ghcjs_HOST_OS)
+#else
 -- |Get a parameter value from the Parameter Server.
 getServerParam :: XmlRpcType a => String -> Node (Maybe a)
 getServerParam var = do state <- get
@@ -267,6 +279,7 @@ getParamOpt var = do var' <- remapName =<< canonicalizeName var
 -- value.
 getParam :: (XmlRpcType a, FromParam a) => String -> a -> Node a
 getParam var def = maybe def id <$> getParamOpt var
+#endif
 
 -- |Get the current node's name.
 getName :: Node String
@@ -315,5 +328,9 @@ runNode name (Node nConf) =
        let configuredNode = runReaderT nConf (NodeConfig params' nameMap' conf)
            initialState = NodeState name' namespaceConf masterConf myURI sigStop M.empty M.empty newts clean
            statefulNode = execStateT configuredNode initialState
+#if defined(ghcjs_HOST_OS)
+       let (wait,_port) = (return (),0)
+#else
        (wait,_port) <- liftIO $ Slave.runSlave initialState
+#endif
        statefulNode >>= flip runReaderT (conf,newts) . RN.runNode name' wait _port

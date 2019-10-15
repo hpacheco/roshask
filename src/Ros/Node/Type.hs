@@ -23,18 +23,19 @@ import Ros.Topic (Topic)
 import Ros.Topic.Util (TIO)
 import Ros.Topic.Stats
 import Data.Typeable
-import Ros.Graph.Slave (RosSlave(..))
 
-data Subscription = Subscription { subType   :: String
+#if defined(ghcjs_HOST_OS)
+#else
+import Ros.Graph.Slave (RosSlave(..))
+#endif
+
+data Subscription = Subscription { knownPubs :: TVar (Set URI)
+                                 , addPub    :: URI -> IO ThreadId
+                                 , subType   :: String
                                  , subChan   :: DynBoundedChan
                                  , subTopic  :: DynTopic
                                  , subStats  :: StatMap SubStats
                                  , subCleanup :: TVar (IO ())
-#if defined(ghcjs_HOST_OS)
-#else
-                                 , knownPubs :: TVar (Set URI)
-                                 , addPub    :: URI -> IO ThreadId
-#endif
                                  }
 
 data DynTopic where
@@ -49,25 +50,19 @@ data DynBoundedChan where
 fromDynBoundedChan :: Typeable a => DynBoundedChan -> Maybe (BoundedChan a)
 fromDynBoundedChan (DynBoundedChan t) = gcast t
 
-data Publication = Publication { pubType     :: String
+data Publication = Publication { subscribers :: TVar (Set URI)
+                               , pubType     :: String
+                               , pubPort     :: Int
                                , pubChan     :: DynBoundedChan
                                , pubTopic    :: DynTopic
                                , pubStats    :: StatMap PubStats
                                , pubCleanup  :: TVar (IO ())
-#if defined(ghcjs_HOST_OS)
-#else
-                               , subscribers :: TVar (Set URI)
-                               , pubPort     :: Int
-#endif
                                }
 
 data NodeState = NodeState { nodeName       :: String
                            , namespace      :: String
-#if defined(ghcjs_HOST_OS)
-#else
                            , master         :: URI
                            , nodeURI        :: MVar URI
-#endif
                            , signalShutdown :: MVar (IO ())
                            , subscriptions  :: Map String Subscription
                            , publications   :: Map String Publication
@@ -96,11 +91,16 @@ instance MonadReader NodeConfig Node where
     ask = Node ask
     local f m = Node $ withReaderT f (unNode m)
 
+#if defined(ghcjs_HOST_OS)
+getNodeName = nodeName
+getMaster = master
+getNodeURI = nodeURI
+setShutDownAction shutdown = return ()
+cleanupNode s = return ()
+#else
 instance RosSlave NodeState where
     getNodeName = nodeName
     setShutdownAction ns a = putMVar (signalShutdown ns) a
-#if defined(ghcjs_HOST_OS)
-#else
     getMaster = master
     getNodeURI = nodeURI
     getSubscriptions = atomically . mapM formatSub . M.toList . subscriptions

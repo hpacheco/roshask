@@ -33,15 +33,22 @@ import Ros.Graph.Slave
 -- Inform the master that we are publishing a particular topic.
 registerPublication :: String -> NodeState -> String -> String -> 
                        (TopicName, TopicType, a) -> Config ()
+#if defined(ghcjs_HOST_OS)
+registerPublication name _n master uri (tname, ttype, _) = return ()
+#else
 registerPublication name _n master uri (tname, ttype, _) = orErrorConfig_ "Warning: cannot register publication on master" $ 
     do debug $ "Registering publication of "++ttype++" on topic "++
                tname++" on master "++master
        _subscribers <- liftIO $ registerPublisher master name tname ttype uri
        return ()
+#endif
 
 -- Inform the master that we are subscribing to a particular topic.
 registerSubscription :: String -> NodeState -> String -> String -> 
                         (TopicName, TopicType, a) -> Config ()
+#if defined(ghcjs_HOST_OS)
+registerSubscription name n master uri (tname, ttype, _) = return ()
+#else
 registerSubscription name n master uri (tname, ttype, _) = orErrorConfig_ "Warning: cannot register subscription on master" $ 
     do debug $ "Registering subscription to "++tname++" for "++ttype
        (r,_,publishers) <- liftIO $ registerSubscriber master name tname ttype uri
@@ -49,6 +56,7 @@ registerSubscription name n master uri (tname, ttype, _) = orErrorConfig_ "Warni
          then liftIO $ publisherUpdate n tname publishers
          else error "Failed to register subscriber with master"
        return ()
+#endif
 
 -- Redirect local publishers to local subscribers
 registerLocalSubscription :: (String,(Publication,Subscription)) -> Node ()
@@ -128,7 +136,7 @@ runNode name wait _port s = do --(wait, _port) <- liftIO $ runSlave s
                         shutdown = do putStrLn "Shutting down"
                                       (cleanupNode s) `E.catch` ignoreEx
                                       Sem.signal allDone
-                    liftIO $ setShutdownAction s shutdown
+                    liftIO $ setShutDownAction shutdown
                     _ <- liftIO $ 
                          installHandler sigINT (CatchOnce shutdown) Nothing
                     t <- liftIO . forkIO $ wait >> Sem.signal allDone
