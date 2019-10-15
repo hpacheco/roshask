@@ -1,5 +1,3 @@
-{-# LANGUAGE CPP #-}
-
 module Ros.Service (callService) where
 import System.Environment(getEnvironment)
 
@@ -8,10 +6,7 @@ import Ros.Internal.RosBinary
 import Ros.Internal.Msg.SrvInfo
 import Ros.Service.ServiceTypes
 
-#if defined(ghcjs_HOST_OS)
-#else
 import Ros.Node.RosTcp(callServiceWithMaster)
-#endif
 
 
 --type NotOkError = String
