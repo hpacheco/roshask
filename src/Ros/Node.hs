@@ -44,8 +44,8 @@ import qualified Control.Monad.Except as E
 import qualified Control.Exception as E
 
 #if defined(ghcjs_HOST_OS)
-import qualified Ros.Graph.ParameterServer as P
 #else
+import qualified Ros.Graph.ParameterServer as P
 #endif    
 
 getThreads :: Node ThreadMap
