@@ -29,7 +29,12 @@ import System.Process (readProcess)
 import Ros.Internal.RosTypes
 import Ros.Internal.Util.AppConfig (debug)
 import Ros.Topic.Stats (PubStats(PubStats), SubStats(SubStats))
+
+
+#if defined(ghcjs_HOST_OS)
+#else
 import Ros.Graph.Master
+#endif
 
 class RosSlave a where
     getMaster :: a -> URI
