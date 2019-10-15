@@ -1,4 +1,4 @@
-{-# LANGUAGE MultiParamTypeClasses, FlexibleInstances, GADTs,
+{-# LANGUAGE CPP, MultiParamTypeClasses, FlexibleInstances, GADTs,
              ExistentialQuantification, GeneralizedNewtypeDeriving #-}
 module Ros.Node.Type where
 import Control.Applicative (Applicative(..), (<$>))
