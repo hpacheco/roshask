@@ -29,17 +29,17 @@ import Data.Typeable
 import Ros.Graph.Slave (RosSlave(..))
 #endif
 
-data Subscription = Subscription {
-#if defined(ghcjs_HOST_OS)
-#else
-                                   knownPubs :: TVar (Set URI)
-                                 , addPub    :: URI -> IO ThreadId
-#endif
-                                 , subType   :: String
+data Subscription = Subscription { subType   :: String
                                  , subChan   :: DynBoundedChan
                                  , subTopic  :: DynTopic
                                  , subStats  :: StatMap SubStats
-                                 , subCleanup :: TVar (IO ()) }
+                                 , subCleanup :: TVar (IO ())
+#if defined(ghcjs_HOST_OS)
+#else
+                                 , knownPubs :: TVar (Set URI)
+                                 , addPub    :: URI -> IO ThreadId
+#endif
+                                 }
 
 data DynTopic where
   DynTopic :: Typeable a => Topic TIO a -> DynTopic
@@ -53,17 +53,17 @@ data DynBoundedChan where
 fromDynBoundedChan :: Typeable a => DynBoundedChan -> Maybe (BoundedChan a)
 fromDynBoundedChan (DynBoundedChan t) = gcast t
 
-data Publication = Publication {
-#if defined(ghcjs_HOST_OS)
-#else
-                                 subscribers :: TVar (Set URI)
-                               , pubPort     :: Int
-#endif
-                               , pubType     :: String
+data Publication = Publication { pubType     :: String
                                , pubChan     :: DynBoundedChan
                                , pubTopic    :: DynTopic
                                , pubStats    :: StatMap PubStats
-                               , pubCleanup  :: TVar (IO ()) }
+                               , pubCleanup  :: TVar (IO ())
+#if defined(ghcjs_HOST_OS)
+#else
+                               , subscribers :: TVar (Set URI)
+                               , pubPort     :: Int
+#endif
+                               }
 
 data NodeState = NodeState { nodeName       :: String
                            , namespace      :: String
