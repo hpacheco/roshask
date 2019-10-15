@@ -31,8 +31,7 @@ import Ros.Graph.Slave
 #endif
 
 -- Inform the master that we are publishing a particular topic.
-registerPublication :: RosSlave n => 
-                       String -> n -> String -> String -> 
+registerPublication :: String -> NodeState -> String -> String -> 
                        (TopicName, TopicType, a) -> Config ()
 registerPublication name _n master uri (tname, ttype, _) = orErrorConfig_ "Warning: cannot register publication on master" $ 
     do debug $ "Registering publication of "++ttype++" on topic "++
@@ -41,8 +40,7 @@ registerPublication name _n master uri (tname, ttype, _) = orErrorConfig_ "Warni
        return ()
 
 -- Inform the master that we are subscribing to a particular topic.
-registerSubscription :: RosSlave n =>
-                        String -> n -> String -> String -> 
+registerSubscription :: String -> NodeState -> String -> String -> 
                         (TopicName, TopicType, a) -> Config ()
 registerSubscription name n master uri (tname, ttype, _) = orErrorConfig_ "Warning: cannot register subscription on master" $ 
     do debug $ "Registering subscription to "++tname++" for "++ttype
