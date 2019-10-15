@@ -159,7 +159,6 @@ formatPublication st name pub = atomically $ formatPub (name,pub)
                                                       M.toList $
                                                       stats
                                             return (topicType, stats')
-#endif
 
 -- If a given URI is not a part of a Set of known URIs, add an action
 -- to effect a subscription to an accumulated action and add the URI
