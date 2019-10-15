@@ -99,6 +99,9 @@ Library
                        Ros.Internal.DepFinder
                        Ros.Internal.SetupUtil
                        Ros.Internal.PathUtil
+    Other-modules:     Ros.Graph.Master
+                       Ros.Graph.Slave
+                       Ros.Graph.ParameterServer
 
   -- Packages needed in order to build this package.
   Build-depends:       base >= 4.5 && < 6, time-out, time-units,
@@ -130,8 +133,7 @@ Library
   Hs-Source-Dirs:      src
   default-language: Haskell2010
   -- Modules not exported by this package.
-  Other-modules:      Ros.Graph.Master Ros.Graph.Slave Ros.Graph.ParameterServer
-                      Ros.Node.Type Ros.Node.RunNode Ros.Node.BinaryIter
+  Other-modules:      Ros.Node.Type Ros.Node.RunNode Ros.Node.BinaryIter
                       Ros.Node.ConnectionHeader Ros.Topic.Stats
                       Ros.Internal.Util.RingChan
                       Ros.Internal.Util.ArgRemapping
