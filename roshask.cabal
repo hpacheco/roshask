@@ -121,7 +121,7 @@ Library
                        utf8-string >= 0.3.6,
                        vector-space,
                        vector >= 0.10,
-                       filepath > 1.1,
+                       filepath > 1.1
 
   if !os(windows)
     Build-depends: unix
