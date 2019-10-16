@@ -14,7 +14,7 @@ getVerbosity = (verbosity . fst) `fmap` ask
 
 debug :: String -> Config ()
 debug s = do v <- getVerbosity
-             when True (liftIO (putStrLn s)) --(v > 0)
+             when (v > 0) (liftIO (putStrLn s))
 
 orErrorConfig_ :: String -> Config () -> Config ()
 orErrorConfig_ msg m = E.catchError m $ \e -> do
