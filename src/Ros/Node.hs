@@ -10,12 +10,12 @@ module Ros.Node  (getThreads,addCleanup,forkNode,nodeTIO,Node, runNode, Subscrib
                  module Ros.Internal.RosTypes, Topic(..),
                  module Ros.Internal.RosTime, liftIO) where
 import Control.Applicative ((<$>))
-import Control.Concurrent (newEmptyMVar, readMVar, putMVar,killThread)
+import Control.Concurrent (threadDelay,newEmptyMVar, readMVar, putMVar,killThread)
 import Control.Concurrent.BoundedChan
 import Control.Concurrent.STM (atomically,newTVarIO,readTVar,modifyTVar)
 import Control.Concurrent.Hierarchy
 import Control.Concurrent.HierarchyInternal
-import Control.Monad (when)
+import Control.Monad (when,forever)
 import Control.Monad.State (liftIO, get, gets, put, execStateT,modify)
 import Control.Monad.Reader (ask, asks, runReaderT)
 import qualified Data.Map as M
@@ -118,7 +118,7 @@ addSource tname updateStats c uri = return (error "nothread")
 addSource tname updateStats c uri = 
     forkConfigUnsafe $ do
         t <- subStream uri tname (updateStats uri)
-        configTIO $ forever $ join $ fmap (liftIO . writeChan c) t
+        configTIO $ Ros.Topic.forever $ join $ fmap (liftIO . writeChan c) t
 #endif
 
 -- Create a new Subscription value that will act as a named input
@@ -203,7 +203,7 @@ subscribe_ name =
 runHandler :: (a -> TIO b) -> Topic TIO a -> Node ThreadId
 runHandler go topic = do
     ts <- gets threads
-    liftIO $ newChild ts $ \ts' -> runReaderT (forever $ join $ fmap go topic) ts'
+    liftIO $ newChild ts $ \ts' -> runReaderT (Ros.Topic.forever $ join $ fmap go topic) ts'
 
 advertiseAux :: (Maybe Publication -> Int -> Config (Publication)) -> Int -> TopicName -> Node ()
 advertiseAux mkPub' bufferSize name =
@@ -291,7 +291,7 @@ getNamespace = namespace <$> get
 
 halt :: IO a
 halt = do
-    forever (threadDelay maxBound)
+    E.forever (threadDelay maxBound)
     return (error "halt")
 
 -- |Run a ROS Node.
