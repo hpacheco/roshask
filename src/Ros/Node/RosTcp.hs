@@ -303,6 +303,7 @@ runServerAux negotiate pubAction _updateStats bufferSize =
     do r <- ask
        liftIO . withSocketsDo $ runReaderT go r
   where go = do 
+                let defaultPort = 0
                 sock <- liftIO $ socket AF_INET Sock.Stream defaultProtocol
                 liftIO $ bind sock (SockAddrInet defaultPort $ tupleToHostAddress (0,0,0,0))
                 port <- liftIO (fromInteger . toInteger <$> socketPort sock)

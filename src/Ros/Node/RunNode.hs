@@ -136,7 +136,7 @@ runNode name wait _port s = do --(wait, _port) <- liftIO $ runSlave s
                         shutdown = do putStrLn "Shutting down"
                                       (cleanupNode s) `E.catch` ignoreEx
                                       Sem.signal allDone
-                    liftIO $ setShutDownAction shutdown
+                    liftIO $ setShutdownAction s shutdown
                     _ <- liftIO $ 
                          installHandler sigINT (CatchOnce shutdown) Nothing
                     t <- liftIO . forkIO $ wait >> Sem.signal allDone

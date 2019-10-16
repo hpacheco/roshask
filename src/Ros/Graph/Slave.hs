@@ -178,6 +178,7 @@ simpleServe port handler = simpleHttpServe conf handler
 -- closing it.
 findFreePort :: IO Int
 findFreePort = do 
+    let defaultPort = 0
     s <- socket AF_INET Net.Stream defaultProtocol
     bind s (SockAddrInet defaultPort $ tupleToHostAddress (0,0,0,0))
     port <- fromInteger . toInteger <$> socketPort s

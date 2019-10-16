@@ -95,7 +95,7 @@ instance MonadReader NodeConfig Node where
 getNodeName = nodeName
 getMaster = master
 getNodeURI = nodeURI
-setShutDownAction shutdown = return ()
+setShutdownAction _ shutdown = return ()
 cleanupNode s = return ()
 #else
 instance RosSlave NodeState where

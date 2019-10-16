@@ -289,6 +289,11 @@ getName = nodeName <$> get
 getNamespace :: Node String
 getNamespace = namespace <$> get
 
+halt :: IO a
+halt = do
+    forever (threadDelay maxBound)
+    return (error "halt")
+
 -- |Run a ROS Node.
 runNode :: NodeName -> Node a -> IO ()
 runNode name (Node nConf) =
@@ -329,7 +334,7 @@ runNode name (Node nConf) =
            initialState = NodeState name' namespaceConf masterConf myURI sigStop M.empty M.empty newts clean
            statefulNode = execStateT configuredNode initialState
 #if defined(ghcjs_HOST_OS)
-       let (wait,_port) = (return (),0)
+       let (wait,_port) = (halt,0)
 #else
        (wait,_port) <- liftIO $ Slave.runSlave initialState
 #endif
