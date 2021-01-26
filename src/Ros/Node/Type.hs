@@ -1,11 +1,12 @@
-{-# LANGUAGE CPP, MultiParamTypeClasses, FlexibleInstances, GADTs,
+{-# LANGUAGE CPP, MultiParamTypeClasses, FlexibleInstances, GADTs, ScopedTypeVariables, 
              ExistentialQuantification, GeneralizedNewtypeDeriving #-}
 module Ros.Node.Type where
 import Control.Applicative (Applicative(..), (<$>))
 import Control.Concurrent (MVar, putMVar,readMVar,killThread)
 import Control.Concurrent.STM (atomically, TVar, readTVar, writeTVar,modifyTVar)
-import Control.Concurrent.BoundedChan
+import Control.Concurrent.BoundedChan as BC
 import Control.Concurrent.Hierarchy
+import Control.Concurrent.MVar
 import Control.Monad.State
 import Control.Monad.Reader
 import Data.Dynamic
@@ -15,19 +16,32 @@ import Data.Set (Set)
 import qualified Data.Set as S
 import qualified Data.List as List
 import Control.Concurrent (ThreadId)
-import Control.Concurrent.Chan
+import Control.Concurrent.Chan as C
 import Ros.Internal.RosTypes (URI,TopicType(..),TopicName)
 import Ros.Internal.Util.ArgRemapping (ParamVal)
 import Ros.Internal.Util.AppConfig (ConfigOptions)
 import Ros.Topic (Topic)
-import Ros.Topic.Util (TIO)
+import Ros.Topic.Util (TIO,forkTIO)
 import Ros.Topic.Stats
 import Data.Typeable
+import Ros.Internal.RosTypes
 
 #if defined(ghcjs_HOST_OS)
 #else
 import Ros.Graph.Slave (RosSlave(..))
 #endif
+
+-- TODO: connect to ROS
+data Parameter = Parameter
+    { parameterName :: ParamName
+    , parameterValue :: DynMVar
+    }
+
+-- TODO: connect to ROS
+data Service = Service
+    { serviceName :: ServiceName
+    , serviceRequests :: DynBoundedChan
+    }
 
 data Subscription = Subscription { knownPubs :: TVar (Set URI)
                                  , addPub    :: URI -> IO ThreadId
@@ -38,6 +52,22 @@ data Subscription = Subscription { knownPubs :: TVar (Set URI)
                                  , subCleanup :: TVar (IO ())
                                  }
 
+data DynMVar where
+  DynMVar :: Typeable a => MVar a -> DynMVar
+  
+tryWriteDynMVar :: Typeable a => DynMVar -> a -> IO Bool
+tryWriteDynMVar (DynMVar v) a = case cast a of
+    Nothing -> return False
+    Just b -> modifyMVar v $ \_ -> return (b,True)
+
+readDynMVar :: DynMVar -> IO Dynamic
+readDynMVar (DynMVar v) = liftM toDyn $ readMVar v
+
+readDynMVar' :: Typeable a => DynMVar -> IO (Maybe a)
+readDynMVar' (DynMVar v) = do
+    vv <- readMVar v
+    return $ cast vv 
+
 data DynTopic where
   DynTopic :: Typeable a => Topic TIO a -> DynTopic
 
@@ -46,6 +76,11 @@ fromDynTopic (DynTopic t) = gcast t
 
 data DynBoundedChan where
   DynBoundedChan :: Typeable a => BoundedChan a -> DynBoundedChan
+
+tryWriteDynBoundedChan :: Typeable a => DynBoundedChan -> a -> IO Bool
+tryWriteDynBoundedChan (DynBoundedChan c) v = case cast v of
+    Nothing -> return False
+    Just v' -> BC.writeChan c v' >> return True
 
 fromDynBoundedChan :: Typeable a => DynBoundedChan -> Maybe (BoundedChan a)
 fromDynBoundedChan (DynBoundedChan t) = gcast t
@@ -64,8 +99,10 @@ data NodeState = NodeState { nodeName       :: String
                            , master         :: URI
                            , nodeURI        :: MVar URI
                            , signalShutdown :: MVar (IO ())
-                           , subscriptions  :: Map String Subscription
-                           , publications   :: Map String Publication
+                           , subscriptions  :: TVar (Map String Subscription)
+                           , publications   :: TVar (Map String Publication)
+                           , parameters     :: MVar (Map String Parameter)
+                           , services       :: MVar (Map String Service)
                            , threads        :: ThreadMap
                            , nodeCleanup    :: TVar (IO ()) }
 
@@ -103,14 +140,18 @@ instance RosSlave NodeState where
     setShutdownAction ns a = putMVar (signalShutdown ns) a
     getMaster = master
     getNodeURI = nodeURI
-    getSubscriptions = atomically . mapM formatSub . M.toList . subscriptions
+    getSubscriptions st = atomically $ do
+            subs <- readTVar $ subscriptions st
+            mapM formatSub $ M.toList subs
         where formatSub (name, sub) = let topicType = subType sub
                                       in do stats <- readTVar (subStats sub)
                                             stats' <- mapM statSnapshot . 
                                                       M.toList $
                                                       stats
                                             return (name, topicType, stats')
-    getPublications = atomically . mapM formatPub . M.toList . publications
+    getPublications st = atomically $ do
+            pubs <- readTVar $ publications st
+            mapM formatPub $ M.toList pubs
         where formatPub (name, pub) = let topicType = pubType pub
                                       in do stats <- readTVar (pubStats pub)
                                             stats' <- mapM statSnapshot .
@@ -120,8 +161,9 @@ instance RosSlave NodeState where
     --hpacheco: ignore publishers from the same node
     publisherUpdate ns name uris = 
         let act = readMVar (nodeURI ns) >>= \nodeuri -> do
-                cleans <- join.atomically $
-                      case M.lookup name (subscriptions ns) of
+                cleans <- join.atomically $ do
+                      subs <- readTVar $ subscriptions ns
+                      case M.lookup name subs of
                         Nothing -> return (return [])
                         Just sub -> do
                             let add = addPub sub >=> \t -> return [(t,subCleanup sub)]
@@ -133,13 +175,17 @@ instance RosSlave NodeState where
                             return act'
                 forM_ cleans $ \(t,clean) -> atomically $ modifyTVar clean (>> killThread t)
         in act
-    getTopicPortTCP = ((pubPort <$> ) .) . flip M.lookup . publications
+    getTopicPortTCP st t = do
+        pubs <- atomically $ readTVar $ publications st
+        return $ (fmap pubPort) $ M.lookup t pubs
     stopNode st = do
         clean <- atomically $ readTVar $ nodeCleanup st
         clean
         killThreadHierarchy $ threads st
-        mapM_ (atomically . readTVar . subCleanup . snd) $ M.toList $ subscriptions st
-        mapM_ (atomically . readTVar . pubCleanup . snd) $ M.toList $ publications st
+        subs <- atomically $ readTVar $ subscriptions st
+        mapM_ (atomically . readTVar . subCleanup . snd) $ M.toList $ subs
+        pubs <- atomically $ readTVar $ publications st
+        mapM_ (atomically . readTVar . pubCleanup . snd) $ M.toList $ pubs
 #endif
 
 formatSubscription :: NodeState -> TopicName -> Subscription -> IO (TopicType, [(URI, SubStats)])

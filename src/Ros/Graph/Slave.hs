@@ -40,7 +40,7 @@ class RosSlave a where
     getSubscriptions :: a -> IO [(TopicName, TopicType, [(URI, SubStats)])]
     getPublications :: a -> IO [(TopicName, TopicType, [(URI, PubStats)])]
     publisherUpdate :: a -> TopicName -> [URI] -> IO ()
-    getTopicPortTCP :: a -> TopicName -> Maybe Int
+    getTopicPortTCP :: a -> TopicName -> IO (Maybe Int)
     stopNode :: a -> IO ()
 
 #ifdef mingw32_HOST_OS
@@ -134,8 +134,9 @@ myName n = extractName `fmap` readMVar (getNodeURI n)
 
 requestTopic :: RosSlave a => a -> CallerID -> TopicName -> [[Value]] -> 
                 RpcResult (String,String,Int)
-requestTopic n _ topic _protocols = 
-    case getTopicPortTCP n topic of
+requestTopic n _ topic _protocols = do
+    ts <- getTopicPortTCP n topic
+    case ts of
       Just p -> do --putStrLn $ topic++" requested "++show p
                    host <- myName n
                    return (1, "", ("TCPROS",host,p))

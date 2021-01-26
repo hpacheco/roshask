@@ -106,7 +106,8 @@ registerSubscriptionNode name sub = do
     let nodename = getNodeName n
     (typ,stats) <- liftIO $ formatSubscription n name sub
     configNode $ registerSubscription nodename n master uri (name,typ,stats)
-    case Map.lookup name (publications n) of
+    pubs <- liftIO $ atomically $ readTVar $ publications n
+    case Map.lookup name pubs of
         Nothing -> return ()
         Just pub -> registerLocalSubscription (name,(pub,sub))
 
@@ -118,7 +119,8 @@ registerPublicationNode name pub = do
     let nodename = getNodeName n
     (typ,stats) <- liftIO $ formatPublication n name pub
     configNode $ registerPublication nodename n master uri (name,typ,stats)
-    case Map.lookup name (subscriptions n) of
+    subs <- liftIO $ atomically $ readTVar $ subscriptions n
+    case Map.lookup name subs of
         Nothing -> return ()
         Just sub -> registerLocalSubscription (name,(pub,sub))
 

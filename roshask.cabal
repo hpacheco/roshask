@@ -62,7 +62,8 @@ Flag logging
 Library
   -- Modules exported by the library.
   Exposed-modules:     Ros.Node
-                       Ros.Topic
+                       Ros.Node.Type
+                       Ros.Topic 
                        Ros.Topic.Util
                        Ros.Topic.PID
                        Ros.Topic.Transformers
@@ -92,7 +93,7 @@ Library
     Build-depends:
                        
   else
-    Build-depends:     network >= 2.6, uri >= 0.1.5, filemanip > 0.3.6, haxr >= 3000.11.1, xml >= 1.3.5, snap-core >= 0.9, snap-server >= 0.9, process >= 1.0.1.3, directory > 1.0
+    Build-depends:     network >= 3, network-bsd, network-uri, uri >= 0.1.5, filemanip > 0.3.6, haxr >= 3000.11.1, xml >= 1.3.5, snap-core >= 0.9, snap-server >= 0.9, process >= 1.0.1.3, directory > 1.0
     Exposed-modules:
                        Ros.Internal.DepFinder
                        Ros.Internal.SetupUtil
@@ -121,7 +122,7 @@ Library
                        utf8-string >= 0.3.6,
                        vector-space,
                        vector >= 0.10,
-                       filepath > 1.1,
+                       filepath > 1.1
 
   if !os(windows)
     Build-depends: unix
@@ -131,7 +132,7 @@ Library
   Hs-Source-Dirs:      src
   default-language: Haskell2010
   -- Modules not exported by this package.
-  Other-modules:      Ros.Node.Type Ros.Node.RunNode Ros.Node.BinaryIter
+  Other-modules:      Ros.Node.RunNode Ros.Node.BinaryIter
                       Ros.Node.ConnectionHeader Ros.Topic.Stats
                       Ros.Internal.Util.RingChan
                       Ros.Internal.Util.ArgRemapping

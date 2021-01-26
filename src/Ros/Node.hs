@@ -2,21 +2,24 @@
 -- |The primary entrypoint to the ROS client library portion of
 -- roshask. This module defines the actions used to configure a ROS
 -- Node.
-module Ros.Node  (getThreads,addCleanup,forkNode,nodeTIO,Node, runNode, Subscribe, Advertise,
-                 getShutdownAction, runHandler,
+module Ros.Node  (getThreads,addCleanup,forkNode,forkNodeIO,nodeTIO,Node, runNode, Subscribe, Advertise,
+                 getShutdownAction, runHandler,runHandler_,
 --                 getParam, getParamOpt,
                  getName, getNamespace,
                  subscribe, advertise, advertiseBuffered,
+                 registerService, callService, getParameter'', getParameter', getParameter, setParameter,
                  module Ros.Internal.RosTypes, Topic(..),
                  module Ros.Internal.RosTime, liftIO) where
 import Control.Applicative ((<$>))
 import Control.Concurrent (threadDelay,newEmptyMVar, readMVar, putMVar,killThread)
-import Control.Concurrent.BoundedChan
+import Control.Concurrent.BoundedChan as BC
 import Control.Concurrent.STM (atomically,newTVarIO,readTVar,modifyTVar)
 import Control.Concurrent.Hierarchy
 import Control.Concurrent.HierarchyInternal
+import Control.Concurrent.MVar
+import Control.Monad.Trans
 import Control.Monad (when,forever)
-import Control.Monad.State (liftIO, get, gets, put, execStateT,modify)
+import Control.Monad.State (liftIO, get, gets, put, execStateT,evalStateT,modify)
 import Control.Monad.Reader (ask, asks, runReaderT)
 import qualified Data.Map as M
 import qualified Data.Set as S
@@ -24,6 +27,8 @@ import Control.Concurrent (ThreadId)
 import Data.Dynamic
 import System.Environment (getEnvironment, getArgs)
 import qualified Data.Map as Map
+import Data.Proxy
+import Control.Monad
 
 import Ros.Internal.Msg.MsgInfo
 import Ros.Internal.RosBinary (RosBinary)
@@ -35,7 +40,7 @@ import Ros.Node.Type
 import qualified Ros.Node.RunNode as RN
 import Ros.Topic
 import Ros.Topic.Stats (recvMessageStat, sendMessageStat)
-import Ros.Topic.Util (configTIO,TIO,share,shareUnsafe)
+import Ros.Topic.Util (configTIO,TIO,share,shareUnsafe,forkTIO)
 
 import qualified Control.Monad.Except as E
 import qualified Control.Exception as E
@@ -71,6 +76,15 @@ forkNode n = do
     liftIO $ extendThreadMap ts children
     modify $ \s -> s { threads = ts }
     return children
+    
+forkNodeIO :: Node () -> Node ThreadId
+forkNodeIO (Node n) = do
+    r <- ask
+    s <- get
+    let n' = lift $ evalStateT (runReaderT n r) s
+    tid <- nodeTIO $ forkTIO n'
+    addCleanup $ killThread tid
+    return tid
 
 nodeTIO :: TIO a -> Node a
 nodeTIO m = do
@@ -118,7 +132,7 @@ addSource tname updateStats c uri = return (error "nothread")
 addSource tname updateStats c uri = 
     forkConfigUnsafe $ do
         t <- subStream uri tname (updateStats uri)
-        configTIO $ Ros.Topic.forever $ join $ fmap (liftIO . writeChan c) t
+        configTIO $ Ros.Topic.forever $ Ros.Topic.join $ fmap (liftIO . writeChan c) t
 #endif
 
 -- Create a new Subscription value that will act as a named input
@@ -180,17 +194,18 @@ subscribe_ name =
        name' <- canonicalizeName =<< remapName name
        r <- nodeAppConfig <$> ask
        ts <- gets threads
-       let subs = subscriptions n
+       subs <- liftIO $ atomically $ readTVar $ subscriptions n
        case (M.lookup name' subs) of
            Just sub -> case fromDynTopic (subTopic sub) of
                Nothing -> error $ "Already subscribed to topic " ++ name' ++ " with a different type."
                Just stream -> return stream
            Nothing -> do
-             let pubs = publications n
+             pubs <- liftIO $ atomically $ readTVar $ publications n
              --if M.member name' pubs -- TODO: shouldn't happen, ignoring other possible publishers
              --  then return . fromDynErr . pubTopic $ pubs M.! name'
              (stream,sub) <- liftIO $ runReaderT (mkSub name') (r,ts)
-             put n { subscriptions = M.insert name' sub subs }
+             liftIO $ atomically $ modifyTVar (subscriptions n) $ M.insert name' sub
+             --put n { subscriptions = M.insert name' sub subs }
              RN.registerSubscriptionNode name' sub
              return stream
 --  where fromDynErr = maybe (error msg) id . fromDynTopic
@@ -203,7 +218,10 @@ subscribe_ name =
 runHandler :: (a -> TIO b) -> Topic TIO a -> Node ThreadId
 runHandler go topic = do
     ts <- gets threads
-    liftIO $ newChild ts $ \ts' -> runReaderT (Ros.Topic.forever $ join $ fmap go topic) ts'
+    liftIO $ newChild ts $ \ts' -> runReaderT (Ros.Topic.forever $ Ros.Topic.join $ fmap go topic) ts'
+
+runHandler_ :: (a -> TIO b) -> Topic TIO a -> Node ()
+runHandler_ go topic = runHandler go topic >> return ()
 
 advertiseAux :: (Maybe Publication -> Int -> Config (Publication)) -> Int -> TopicName -> Node ()
 advertiseAux mkPub' bufferSize name =
@@ -211,10 +229,11 @@ advertiseAux mkPub' bufferSize name =
        name' <- remapName =<< canonicalizeName name
        r <- nodeAppConfig <$> ask
        ts <- gets threads
-       let pubs = publications n
+       pubs <- liftIO $ atomically $ readTVar $ publications n
        let mbpub = M.lookup name' pubs 
        (pub') <- liftIO $ runReaderT (mkPub' mbpub bufferSize) (r,ts)
-       put n { publications = M.insert name' pub' pubs }
+       liftIO $ atomically $ modifyTVar (publications n) $ M.insert name' pub'
+       --put n { publications = M.insert name' pub' pubs }
        RN.registerPublicationNode name' pub'
 
 -- |Advertise a 'Topic' publishing a stream of 'IO' values with a
@@ -330,8 +349,12 @@ runNode name (Node nConf) =
                       Nothing -> return ()
                       Just n -> putMVar myURI $! "http://"++n
          Just ip -> putMVar myURI $! "http://"++ip
+       subs <- newTVarIO $ M.empty
+       pubs <- newTVarIO $ M.empty
+       parameters <- newMVar $ M.empty
+       services <- newMVar $ M.empty
        let configuredNode = runReaderT nConf (NodeConfig params' nameMap' conf)
-           initialState = NodeState name' namespaceConf masterConf myURI sigStop M.empty M.empty newts clean
+           initialState = NodeState name' namespaceConf masterConf myURI sigStop subs pubs parameters services newts clean
            statefulNode = execStateT configuredNode initialState
 #if defined(ghcjs_HOST_OS)
        putMVar myURI "http://"
@@ -340,3 +363,62 @@ runNode name (Node nConf) =
        (wait,_port) <- liftIO $ Slave.runSlave initialState
 #endif
        statefulNode >>= flip runReaderT (conf,newts) . RN.runNode name' wait _port
+
+
+registerService :: (Typeable a,Typeable b) => ServiceName -> (a -> Node b) -> Node ()
+registerService name go = do
+    svs <- gets services
+    requests <- liftIO $ newBoundedChan 10  
+    forkNodeIO $ do
+        let rec = do
+                (request,responsev) <- liftIO $ BC.readChan requests
+                response <- go request
+                liftIO $ putMVar responsev response 
+        rec
+    let service = Service name (DynBoundedChan requests)
+    liftIO $ modifyMVar svs $ \m -> return (M.insert name service m,())
+
+callService :: (Typeable a,Typeable b) => ServiceName -> a -> Proxy b -> Node (Maybe b)
+callService name request (presponse::Proxy b) = do
+    svs <- gets services >>= liftIO . readMVar
+    case M.lookup name svs of
+        Nothing -> return Nothing
+        Just service -> liftIO $ do
+            (responsev :: MVar b) <- newEmptyMVar
+            ok <- tryWriteDynBoundedChan (serviceRequests service) (request,responsev)
+            if ok then
+                liftM Just $ takeMVar responsev
+                else return Nothing
+
+getParameter'' :: ParamName -> Node (Maybe DynMVar)
+getParameter'' name = do
+    params <- gets parameters
+    ps <- liftIO $ readMVar params
+    return $ fmap parameterValue $ M.lookup name ps
+        
+getParameter' :: ParamName -> Node (Maybe Dynamic)
+getParameter' name = do
+    mb <- getParameter'' name
+    case mb of
+        Nothing -> return Nothing
+        Just valv -> liftM Just $ liftIO $ readDynMVar valv 
+        
+getParameter :: Typeable a => ParamName -> Node (Maybe a)
+getParameter name = do
+    dyn <- getParameter' name
+    return $ Control.Monad.join $ fmap fromDynamic dyn 
+    
+setParameter :: Typeable a => ParamName -> a -> Node ()
+setParameter name val = do
+    params <- gets parameters
+    ps <- liftIO $ readMVar params
+    case M.lookup name ps of
+        Just p -> do
+            let valv = parameterValue p
+            liftIO $ tryWriteDynMVar valv val
+            return ()
+        Nothing -> do
+            valv <- liftIO $ newMVar val
+            let param = Parameter name (DynMVar valv)
+            liftIO $ modifyMVar params $ \ps -> return (M.insert name param ps,())
+
