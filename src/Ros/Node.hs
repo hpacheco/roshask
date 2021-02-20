@@ -71,9 +71,9 @@ forkNode n = do
     s <- get
     let ts = threads s
     children <- liftIO $ newThreadMap
+    liftIO $ extendThreadMap ts children
     put $ s { threads = children }
     n
-    liftIO $ extendThreadMap ts children
     modify $ \s -> s { threads = ts }
     return children
     
@@ -155,24 +155,33 @@ mkSub tname = do c <- liftIO $ newBoundedChan recvBufferSize
 
 -- hpacheco: support multiple publishers within the same node
 mkPub :: forall a. (RosBinary a, MsgInfo a, Typeable a) =>
-         Topic TIO a -> Maybe Publication -> Int -> Config (Publication)
+         Topic TIO a -> Maybe Publication -> Int -> Config (Maybe Publication)
 mkPub (t0::Topic TIO a) mbpub n = do
-    pub <- case mbpub of
+    (isNew,pub) <- case mbpub of
         Nothing -> do
+            --liftIO $ putStrLn $ "register new pub"
             (tchan::BoundedChan a) <- liftIO $ newBoundedChan n
             let (t'::Topic TIO a) = Topic $ do { x <- liftIO (readChan tchan); return (x,t') }
             (t'',tid) <- configTIO $ shareUnsafe t'
-            mkPubAux (msgTypeName (undefined::a)) t'' tchan (runServer t'') n tid
-        Just pub -> return pub
+            pub <- mkPubAux (msgTypeName (undefined::a)) t'' tchan (runServer t'') n tid
+            return (True,pub)
+        Just pub -> do
+            --liftIO $ putStrLn $ "use registered pub"
+            return (False,pub)
     tchan <- case fromDynBoundedChan (pubChan pub) of
         Nothing -> error $ "Already published to topic with a different type."
         Just tchan -> return tchan
-    let feed t = do { (x,t') <- runTopic t; liftIO (writeChan tchan x); feed t' }
+    let feed ts t = do
+            (x,t') <- runTopic t
+            liftIO (writeChan tchan x)
+            let msgt = msgTypeName (undefined::a)
+            --when (msgt=="geometry_msgs/Twist") $ liftIO $ putStrLn $ "published to " ++ msgt 
+            feed ts t'
     -- return a ThreadId to allow killing the topic publisher
     _ <- forkConfig $ do
             ts <- asks Prelude.snd
-            liftIO $ runReaderT (feed t0) ts
-    return (pub)
+            liftIO $ runReaderT (feed ts t0) ts
+    return $ if isNew then Just pub else Nothing
 
 mkPubAux :: Typeable a =>
             String -> Topic TIO a -> BoundedChan a ->
@@ -223,7 +232,7 @@ runHandler go topic = do
 runHandler_ :: (a -> TIO b) -> Topic TIO a -> Node ()
 runHandler_ go topic = runHandler go topic >> return ()
 
-advertiseAux :: (Maybe Publication -> Int -> Config (Publication)) -> Int -> TopicName -> Node ()
+advertiseAux :: (Maybe Publication -> Int -> Config (Maybe Publication)) -> Int -> TopicName -> Node ()
 advertiseAux mkPub' bufferSize name =
     do n <- get
        name' <- remapName =<< canonicalizeName name
@@ -231,10 +240,13 @@ advertiseAux mkPub' bufferSize name =
        ts <- gets threads
        pubs <- liftIO $ atomically $ readTVar $ publications n
        let mbpub = M.lookup name' pubs 
-       (pub') <- liftIO $ runReaderT (mkPub' mbpub bufferSize) (r,ts)
-       liftIO $ atomically $ modifyTVar (publications n) $ M.insert name' pub'
-       --put n { publications = M.insert name' pub' pubs }
-       RN.registerPublicationNode name' pub'
+       mb <- liftIO $ runReaderT (mkPub' mbpub bufferSize) (r,ts)
+       case mb of
+           Nothing -> return ()
+           Just pub' -> do
+               liftIO $ atomically $ modifyTVar (publications n) $ M.insert name' pub'
+               --put n { publications = M.insert name' pub' pubs }
+               RN.registerPublicationNode name' pub'
 
 -- |Advertise a 'Topic' publishing a stream of 'IO' values with a
 -- per-client transmit buffer of the specified size.
@@ -374,6 +386,7 @@ registerService name go = do
                 (request,responsev) <- liftIO $ BC.readChan requests
                 response <- go request
                 liftIO $ putMVar responsev response 
+                rec
         rec
     let service = Service name (DynBoundedChan requests)
     liftIO $ modifyMVar svs $ \m -> return (M.insert name service m,())
