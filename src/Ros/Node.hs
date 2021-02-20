@@ -2,11 +2,10 @@
 -- |The primary entrypoint to the ROS client library portion of
 -- roshask. This module defines the actions used to configure a ROS
 -- Node.
-module Ros.Node  (getThreads,addCleanup,forkNode,forkNodeIO,nodeTIO,Node, runNode, Subscribe, Advertise,
+module Ros.Node  (getThreads,addCleanup,forkNode,forkNodeIO,nodeTIO,Node, runNode, Subscribe(..), Advertise(..),
                  getShutdownAction, runHandler,runHandler_,
 --                 getParam, getParamOpt,
                  getName, getNamespace,
-                 subscribe, advertise, advertiseBuffered,
                  registerService, callService, getParameter'', getParameter', getParameter, setParameter,
                  module Ros.Internal.RosTypes, Topic(..),
                  module Ros.Internal.RosTime, liftIO) where
@@ -93,12 +92,15 @@ nodeTIO m = do
 
 -- |ROS topic subscriber
 class Subscribe s where
+    subscribeBuffered :: (RosBinary a, MsgInfo a, Typeable a)
+              => Int -> TopicName -> Node (s a)
     -- |Subscrive to given topic name
     subscribe :: (RosBinary a, MsgInfo a, Typeable a)
               => TopicName -> Node (s a)
+    subscribe = subscribeBuffered 10
 
 instance Subscribe (Topic TIO) where
-    subscribe = subscribe_
+    subscribeBuffered = subscribe_
 
 type Cleanup = IO ()
 
@@ -117,10 +119,6 @@ class Advertise a where
 instance Advertise (Topic TIO) where
     advertiseBuffered = advertiseBuffered_
 
--- |Maximum number of items to buffer for a subscriber.
-recvBufferSize :: Int
-recvBufferSize = 10
-
 -- |Spark a thread that funnels a Stream from a URI into the given
 -- Chan.
 addSource :: (RosBinary a, MsgInfo a) =>
@@ -138,20 +136,22 @@ addSource tname updateStats c uri =
 -- Create a new Subscription value that will act as a named input
 -- channel with zero or more connected publishers.
 mkSub :: forall a. (RosBinary a, MsgInfo a,Typeable a) =>
-         String -> Config (Topic TIO a,Subscription)
-mkSub tname = do c <- liftIO $ newBoundedChan recvBufferSize
-                 let stream = Topic $ do x <- liftIO (readChan c)
-                                         return (x, stream)
-                 known <- liftIO $ newTVarIO S.empty
-                 stats <- liftIO $ newTVarIO M.empty
-                 (stream',tid) <- configTIO $ shareUnsafe stream
-                 cleanSub <- liftIO $ newTVarIO $ killThread tid
-                 (r,ts) <- ask
-                 let topicType = msgTypeName (undefined::a)
-                     updateStats = recvMessageStat stats
-                     addSource' = flip runReaderT (r,ts) . addSource tname updateStats c
-                     sub = Subscription known addSource' topicType (DynBoundedChan c) (DynTopic stream') stats cleanSub
-                 return (stream',sub)
+         Int -> String -> Config (Topic TIO a,Subscription)
+mkSub recvBufferSize tname = do
+    c <- liftIO $ newBoundedChan recvBufferSize
+    let stream = Topic $ do
+            x <- liftIO (readChan c)
+            return (x, stream)
+    known <- liftIO $ newTVarIO S.empty
+    stats <- liftIO $ newTVarIO M.empty
+    (stream',tid) <- configTIO $ shareUnsafe stream
+    cleanSub <- liftIO $ newTVarIO $ killThread tid
+    (r,ts) <- ask
+    let topicType = msgTypeName (undefined::a)
+        updateStats = recvMessageStat stats
+        addSource' = flip runReaderT (r,ts) . addSource tname updateStats c
+        sub = Subscription known addSource' topicType (DynBoundedChan c) (DynTopic stream') stats cleanSub
+    return (stream',sub)
 
 -- hpacheco: support multiple publishers within the same node
 mkPub :: forall a. (RosBinary a, MsgInfo a, Typeable a) =>
@@ -197,8 +197,8 @@ mkPubAux trep t tchan runServer' bufferSize tid = do
 
 -- |Subscribe to the given Topic. Returns a 'Ros.Topic.Util.share'd 'Topic'.
 subscribe_ :: (RosBinary a, MsgInfo a, Typeable a)
-           => TopicName -> Node (Topic TIO a)
-subscribe_ name =
+           => Int -> TopicName -> Node (Topic TIO a)
+subscribe_ buffsize name =
     do n <- get
        name' <- canonicalizeName =<< remapName name
        r <- nodeAppConfig <$> ask
@@ -212,7 +212,7 @@ subscribe_ name =
              pubs <- liftIO $ atomically $ readTVar $ publications n
              --if M.member name' pubs -- TODO: shouldn't happen, ignoring other possible publishers
              --  then return . fromDynErr . pubTopic $ pubs M.! name'
-             (stream,sub) <- liftIO $ runReaderT (mkSub name') (r,ts)
+             (stream,sub) <- liftIO $ runReaderT (mkSub buffsize name') (r,ts)
              liftIO $ atomically $ modifyTVar (subscriptions n) $ M.insert name' sub
              --put n { subscriptions = M.insert name' sub subs }
              RN.registerSubscriptionNode name' sub

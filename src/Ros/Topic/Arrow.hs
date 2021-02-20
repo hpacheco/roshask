@@ -14,8 +14,7 @@ import Control.Concurrent (ThreadId)
 import Control.Monad.Fail
 import Ros.Internal.RosBinary (RosBinary)
 import Ros.Internal.Msg.MsgInfo (MsgInfo)
-import Ros.Node (Node, Topic, TopicName, Subscribe, Advertise,
-                 subscribe, advertise, advertiseBuffered)
+import Ros.Node (Node, Topic, TopicName, Subscribe(..), Advertise(..))
 import qualified Ros.Topic.Util as U
 import qualified Ros.Topic as T
 
@@ -48,8 +47,8 @@ instance (Functor m, Applicative m) => Arrow (TopicArrow m) where
 
 -- |Simple Subscribe instance
 instance Subscribe (TopicArrow U.TIO ()) where
-  subscribe n =
-    (TopicArrow . const) <$> subscribe n
+  subscribeBuffered sz n =
+    (TopicArrow . const) <$> subscribeBuffered sz n
 
 -- |Simple Advertise instance
 instance Advertise (TopicArrow U.TIO ()) where
