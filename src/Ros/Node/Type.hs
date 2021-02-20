@@ -10,6 +10,7 @@ import Control.Concurrent.MVar
 import Control.Monad.State
 import Control.Monad.Reader
 import Data.Dynamic
+import Data.Maybe
 import Data.Map (Map)
 import qualified Data.Map as M
 import Data.Set (Set)
@@ -76,6 +77,14 @@ fromDynTopic (DynTopic t) = gcast t
 
 data DynBoundedChan where
   DynBoundedChan :: Typeable a => BoundedChan a -> DynBoundedChan
+
+flushBoundedChan :: BoundedChan a -> IO ()
+flushBoundedChan c = do
+    mb <- BC.tryReadChan c
+    when (isJust mb) $ flushBoundedChan c
+    
+flushDynBoundedChan :: DynBoundedChan -> IO ()
+flushDynBoundedChan (DynBoundedChan c) = flushBoundedChan c
 
 tryWriteDynBoundedChan :: Typeable a => DynBoundedChan -> a -> IO Bool
 tryWriteDynBoundedChan (DynBoundedChan c) v = case cast v of

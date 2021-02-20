@@ -3,7 +3,7 @@
 -- roshask. This module defines the actions used to configure a ROS
 -- Node.
 module Ros.Node  (getThreads,addCleanup,forkNode,forkNodeIO,nodeTIO,Node, runNode, Subscribe(..), Advertise(..),
-                 getShutdownAction, runHandler,runHandler_,
+                 getShutdownAction, runHandler,runHandler_, flushTopic, flushSubscription, flushPublication,
 --                 getParam, getParamOpt,
                  getName, getNamespace,
                  registerService, callService, getParameter'', getParameter', getParameter, setParameter,
@@ -103,6 +103,27 @@ instance Subscribe (Topic TIO) where
     subscribeBuffered = subscribe_
 
 type Cleanup = IO ()
+
+flushSubscription :: TopicName -> Node ()
+flushSubscription name = do
+    n <- get
+    subs <- liftIO $ atomically $ readTVar $ subscriptions n
+    case Map.lookup name subs of
+        Nothing -> return ()
+        Just sub -> liftIO $ flushDynBoundedChan $ subChan sub
+
+flushPublication :: TopicName -> Node ()
+flushPublication name = do
+    n <- get
+    subs <- liftIO $ atomically $ readTVar $ publications n
+    case Map.lookup name subs of
+        Nothing -> return ()
+        Just sub -> liftIO $ flushDynBoundedChan $ pubChan sub
+        
+flushTopic :: TopicName -> Node ()
+flushTopic name = do
+    flushSubscription name
+    flushPublication name
 
 -- |ROS topic publisher
 class Advertise a where
